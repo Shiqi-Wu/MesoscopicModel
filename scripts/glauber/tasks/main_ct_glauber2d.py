@@ -69,6 +69,7 @@ def main():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--hard_cut", action="store_true", default=False)
     parser.add_argument("--kernel", type=str, default="nearest")
+    parser.add_argument("--R", type=float, default=0.0)  # for Kac
 
     # Dynamics
     parser.add_argument("--J", type=float, default=1.0)
@@ -96,7 +97,7 @@ def main():
     out_root = Path(args.outdir)
     ensure_dir(out_root)
     stem_base = (f"ct_glauber_L{L}_ell{args.ell:g}_sigma{args.sigma:g}_tau{args.tau:g}_m0{args.m0:g}"
-                 f"_Tfrac{args.T_frac:g}_J{J:g}_h{h:g}_tend{args.t_end}_dt{args.snapshot_dt}_block{args.block}_kernel{args.kernel}_seed{args.seed}")
+                 f"_Tfrac{args.T_frac:g}_J{J:g}_h{h:g}_tend{args.t_end}_dt{args.snapshot_dt}_block{args.block}_kernel{args.kernel}_R{args.R:g}_seed{args.seed}")
     run_dir = out_root / stem_base
     ensure_dir(run_dir)
 
@@ -130,7 +131,7 @@ def main():
             times, Ms, Es, snaps = sim.simulate_kac(
                 spin_init=spins0,
                 beta=beta, J0=J, h=h,
-                R=args.ell, kernel="gaussian", sigma=args.sigma,
+                R=args.R, kernel="gaussian", sigma=args.sigma,
                 t_end=args.t_end, snapshot_dt=args.snapshot_dt,
                 return_snapshots=True
             )
@@ -138,7 +139,7 @@ def main():
             times, Ms, Es, snaps = sim.simulate_kac(
                 spin_init=spins0,
                 beta=beta, J0=J, h=h,
-                R=args.ell, kernel="uniform_disk", sigma=args.sigma,
+                R=args.R, kernel="uniform_disk", sigma=args.sigma,
                 t_end=args.t_end, snapshot_dt=args.snapshot_dt,
                 return_snapshots=True
             )
@@ -161,8 +162,9 @@ def main():
             ell=float(args.ell), sigma=float(args.sigma), tau=float(args.tau), m0=float(args.m0),
             seed=int(args.seed), block=int(args.block),
             t_end=float(args.t_end), snapshot_dt=float(args.snapshot_dt),
-            init="spectral", dynamics="continuous_glauber",
-            round=int(r)
+            init="spectral", dynamics="continuous_glauber", 
+            kernel=args.kernel, R=float(getattr(args, "R", 0.0)),
+            round=int(r),
         )
 
         round_run_dir = run_dir / f"round{r}"

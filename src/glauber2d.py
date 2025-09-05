@@ -1,6 +1,7 @@
 import numba
 import numpy as np
 import math
+from kac_kernel import build_kernel_fft, conv_spin
 
 @numba.njit(cache=True)
 def _build_nn(L):
@@ -101,77 +102,77 @@ def _glauber_ct_gillespie(spin, L, beta, J, h,
         n_snaps += 1
     return n_snaps
 
-# Kac Kernel
-def build_kac_csr_with_aff(L, R_phys, kernel="gaussian", sigma=0.1, include_self=False):
-    spacing = 1.0 / L
-    R_lat = int(np.ceil(R_phys / spacing))
-    N = L*L
+# # Kac Kernel
+# def build_kac_csr_with_aff(L, R_phys, kernel="gaussian", sigma=0.1, include_self=False):
+#     spacing = 1.0 / L
+#     R_lat = int(np.ceil(R_phys / spacing))
+#     N = L*L
 
-    nbr_ptr = [0]
-    nbr_idx = []
-    nbr_w   = []
-    deg_aff = np.zeros(N, np.int64)
+#     nbr_ptr = [0]
+#     nbr_idx = []
+#     nbr_w   = []
+#     deg_aff = np.zeros(N, np.int64)
 
-    for x in range(L):
-        for y in range(L):
-            weights = []
-            indices = []
-            for dx in range(-R_lat, R_lat+1):
-                for dy in range(-R_lat, R_lat+1):
-                    if dx==0 and dy==0 and not include_self:
-                        continue
-                    u = (x+dx) % L
-                    v = (y+dy) % L
-                    dist = spacing * math.sqrt(dx*dx + dy*dy)
-                    if dist > R_phys:
-                        continue
-                    if kernel=="gaussian":
-                        w = math.exp(-0.5*(dist/sigma)**2)
-                    else:
-                        w = 1.0
-                    indices.append(u*L+v)
-                    weights.append(w)
-            s = sum(weights)
-            weights = [w/s for w in weights]
-            for j,w in zip(indices, weights):
-                nbr_idx.append(j)
-                nbr_w.append(w)
-                deg_aff[j] += 1
-            nbr_ptr.append(len(nbr_idx))
+#     for x in range(L):
+#         for y in range(L):
+#             weights = []
+#             indices = []
+#             for dx in range(-R_lat, R_lat+1):
+#                 for dy in range(-R_lat, R_lat+1):
+#                     if dx==0 and dy==0 and not include_self:
+#                         continue
+#                     u = (x+dx) % L
+#                     v = (y+dy) % L
+#                     dist = spacing * math.sqrt(dx*dx + dy*dy)
+#                     if dist > R_phys:
+#                         continue
+#                     if kernel=="gaussian":
+#                         w = math.exp(-0.5*(dist/sigma)**2)
+#                     else:
+#                         w = 1.0
+#                     indices.append(u*L+v)
+#                     weights.append(w)
+#             s = sum(weights)
+#             weights = [w/s for w in weights]
+#             for j,w in zip(indices, weights):
+#                 nbr_idx.append(j)
+#                 nbr_w.append(w)
+#                 deg_aff[j] += 1
+#             nbr_ptr.append(len(nbr_idx))
 
-    nbr_ptr = np.array(nbr_ptr, dtype=np.int64)
-    nbr_idx = np.array(nbr_idx, dtype=np.int64)
-    nbr_w   = np.array(nbr_w, dtype=np.float64)
+#     nbr_ptr = np.array(nbr_ptr, dtype=np.int64)
+#     nbr_idx = np.array(nbr_idx, dtype=np.int64)
+#     nbr_w   = np.array(nbr_w, dtype=np.float64)
 
-    # 反向邻接
-    aff_ptr = np.zeros(N+1, np.int64)
-    aff_ptr[1:] = np.cumsum(deg_aff)
-    M2 = aff_ptr[-1]
-    aff_idx = np.zeros(M2, np.int64)
-    aff_w   = np.zeros(M2, np.float64)
-    cursor = np.zeros(N, np.int64)
+#     # 反向邻接
+#     aff_ptr = np.zeros(N+1, np.int64)
+#     aff_ptr[1:] = np.cumsum(deg_aff)
+#     M2 = aff_ptr[-1]
+#     aff_idx = np.zeros(M2, np.int64)
+#     aff_w   = np.zeros(M2, np.float64)
+#     cursor = np.zeros(N, np.int64)
 
-    for i in range(N):
-        for p in range(nbr_ptr[i], nbr_ptr[i+1]):
-            j = nbr_idx[p]
-            pos = aff_ptr[j] + cursor[j]
-            aff_idx[pos] = i
-            aff_w[pos]   = nbr_w[p]
-            cursor[j]   += 1
+#     for i in range(N):
+#         for p in range(nbr_ptr[i], nbr_ptr[i+1]):
+#             j = nbr_idx[p]
+#             pos = aff_ptr[j] + cursor[j]
+#             aff_idx[pos] = i
+#             aff_w[pos]   = nbr_w[p]
+#             cursor[j]   += 1
 
-    return nbr_ptr, nbr_idx, nbr_w, aff_ptr, aff_idx, aff_w
+#     return nbr_ptr, nbr_idx, nbr_w, aff_ptr, aff_idx, aff_w
 
-@numba.njit(cache=True)
-def calc_energy_kac(spin, L, J0, h, nbr_ptr, nbr_idx, nbr_w):
-    N = L*L
-    E = 0.0
-    for i in range(N):
-        si = spin.flat[i]
-        for p in range(nbr_ptr[i], nbr_ptr[i+1]):
-            j = nbr_idx[p]
-            E += -0.5 * J0 * nbr_w[p] * si * spin.flat[j]
-    E += -h * np.sum(spin)
-    return E / N
+# @numba.njit(cache=True)
+# def calc_energy_kac(spin, L, J0, h, nbr_ptr, nbr_idx, nbr_w):
+#     N = L*L
+#     E = 0.0
+#     for i in range(N):
+#         si = spin.flat[i]
+#         for p in range(nbr_ptr[i], nbr_ptr[i+1]):
+#             j = nbr_idx[p]
+#             E += -0.5 * J0 * nbr_w[p] * si * spin.flat[j]
+#     E += -h * np.sum(spin)
+#     return E / N
 
 # main class
 class Glauber2DIsingCT:
@@ -184,8 +185,11 @@ class Glauber2DIsingCT:
              np.roll(spin, 1, 1) + np.roll(spin, -1, 1))
         return (-J*np.sum(R*spin)/2.0 - h*np.sum(spin)) / self.area
 
-    def _calc_energy_kac(self, spin, nbr_ptr, nbr_idx, nbr_w, J0=1.0, h=0.0):
-        return calc_energy_kac(spin, self.L, J0, h, nbr_ptr, nbr_idx, nbr_w)
+    def _calc_energy_kac_fft(self, spin, J0=1.0, h=0.0, kernel_fft=None):
+        """基于 FFT 的能量计算"""
+        conv_val = conv_spin(spin, kernel_fft)
+        E = -0.5 * J0 * np.sum(spin * conv_val) - h * np.sum(spin)
+        return E / self.area
 
     def _calc_magnetization(self, spin):
         return np.sum(spin) / self.area
@@ -224,33 +228,27 @@ class Glauber2DIsingCT:
     def simulate_kac(self, spin_init, beta, J0=1.0, h=0.0,
                      R=0.2, kernel="gaussian", sigma=0.1,
                      t_end=500.0, snapshot_dt=0.01, return_snapshots=True):
-        spin = spin_init.copy()
-        N = self.L * self.L
-        print(f"[simulate_kac] start CT Glauber Kac, L={self.L}, R={R}, kernel={kernel}, sigma={sigma}, t_end={t_end}")
+        spin = spin_init.copy().astype(np.int8)
+        L = self.L
+        N = L * L
 
-        # 构建邻接表
-        nbr_ptr, nbr_idx, nbr_w, aff_ptr, aff_idx, aff_w = build_kac_csr_with_aff(
-            self.L, R, kernel=kernel, sigma=sigma)
-        print(f"  [info] avg degree: {nbr_ptr[-1]/N:.2f}, max degree: {max(nbr_ptr[i+1]-nbr_ptr[i] for i in range(N))}")
+        print(f"[simulate_kac_local] start CT Glauber Kac, L={L}, R={R}, kernel={kernel}, sigma={sigma}, t_end={t_end}")
 
-        # 初始化局域场
-        hloc = np.zeros(N, dtype=np.float64)
-        for i in range(N):
-            s = 0.0
-            for p in range(nbr_ptr[i], nbr_ptr[i+1]):
-                j = nbr_idx[p]
-                s += nbr_w[p] * spin.flat[j]
-            hloc[i] = h + J0 * s
+        # 🔹 构建 FFT 核 + 邻域偏移
+        kernel_fft, neighbor_offsets = build_kernel_fft(L, R, kernel, sigma)
 
-        # 初始化速率
-        r = np.zeros(N, dtype=np.float64)
-        for i in range(N):
-            r[i] = np.exp(-beta * hloc[i] * spin.flat[i]) / (2.0 * np.cosh(beta * hloc[i]))
+        # 初始局域场：全局 FFT 一次
+        hloc = h + J0 * conv_spin(spin, kernel_fft)
+
+        # 初始速率
+        r = np.exp(-beta * hloc * spin) / (2.0 * np.cosh(beta * hloc))
         Rtot = r.sum()
-        print(f"[simulate_kac] initial total rate Rtot={Rtot:.3e}")
+        print(f"[simulate_kac_local] initial total rate Rtot={Rtot:.3e}")
+
+        # 输出容器
         max_snaps = int(np.ceil(t_end/snapshot_dt)) + 2
         times = np.zeros(max_snaps, np.float64)
-        snaps = np.zeros((max_snaps, self.L, self.L), np.int8)
+        snaps = np.zeros((max_snaps, L, L), np.int8)
 
         t = 0.0
         next_snap = 0.0
@@ -261,11 +259,15 @@ class Glauber2DIsingCT:
         next_snap += snapshot_dt
 
         rng = np.random.default_rng()
+        step = 0
+
         while t < t_end and Rtot > 0:
+            # Gillespie 时间步
             u1 = rng.random()
             dt = -np.log(u1) / Rtot
             t += dt
 
+            # 存快照
             while t >= next_snap and n_snaps < times.size:
                 times[n_snaps] = next_snap
                 snaps[n_snaps] = spin
@@ -274,46 +276,48 @@ class Glauber2DIsingCT:
                 if next_snap > t_end:
                     break
 
-            # Gillespie: 按速率选择翻转点
+            # Gillespie 按速率抽取翻转点
             u2 = rng.random() * Rtot
             s = 0.0
-            i = 0
-            step = 0
             for i in range(N):
-                s += r[i]
+                s += r.flat[i]
                 if s >= u2:
                     break
+            x, y = divmod(i, L)
 
-            old_s = spin.flat[i]
-            spin.flat[i] = -old_s
-            delta = spin.flat[i] - old_s
+            # 自旋翻转
+            old_s = spin[x, y]
+            spin[x, y] = -old_s
+            delta = spin[x, y] - old_s   # = -2 * old_s
 
-            # 增量更新：翻转点 i 影响的所有中心
-            for p in range(aff_ptr[i], aff_ptr[i+1]):
-                y = aff_idx[p]
-                hloc[y] += J0 * aff_w[p] * delta
-                old = r[y]
-                r[y] = np.exp(-beta * hloc[y] * spin.flat[y]) / (2.0*np.cosh(beta*hloc[y]))
-                Rtot += r[y] - old
+            # 🔹 局部增量更新 hloc + 速率
+            for dx, dy, w in neighbor_offsets:
+                xx = (x + dx) % L
+                yy = (y + dy) % L
+                hloc[xx, yy] += J0 * w * delta
+                old_r = r[xx, yy]
+                r[xx, yy] = np.exp(-beta * hloc[xx, yy] * spin[xx, yy]) / (2.0*np.cosh(beta*hloc[xx, yy]))
+                Rtot += r[xx, yy] - old_r
 
-            # 自身速率也要更新
-            old = r[i]
-            r[i] = np.exp(-beta * hloc[i] * spin.flat[i]) / (2.0*np.cosh(beta*hloc[i]))
-            Rtot += r[i] - old
+            # 自身也要更新
+            old_r = r[x, y]
+            r[x, y] = np.exp(-beta * hloc[x, y] * spin[x, y]) / (2.0*np.cosh(beta*hloc[x, y]))
+            Rtot += r[x, y] - old_r
 
             step += 1
             if step % 10000 == 0:
-                print(f"  [info] t={t:.3f}, Rtot={Rtot:.3e}, next_snap={next_snap:.3f}, n_snaps={n_snaps}")
+                print(f"  [info] t={t:.3f}, Rtot={Rtot:.3e}, snaps={n_snaps}")
 
+        # 截断输出
         times = times[:n_snaps]
         snaps = snaps[:n_snaps]
 
         Ms = np.array([self._calc_magnetization(snaps[k]) for k in range(n_snaps)])
-        Es = np.array([self._calc_energy_kac(snaps[k], nbr_ptr, nbr_idx, nbr_w, J0, h)
+        Es = np.array([self._calc_energy_kac_fft(snaps[k], J0, h, kernel_fft)
                        for k in range(n_snaps)])
 
-        print(f"[simulate_kac] done, collected {n_snaps} snapshots")
-        print(f"[simulate_kac] final magnetization={Ms[-1]:.4f}, energy={Es[-1]:.4f}")
+        print(f"[simulate_kac_local] done, collected {n_snaps} snapshots")
+        print(f"[simulate_kac_local] final magnetization={Ms[-1]:.4f}, energy={Es[-1]:.4f}")
 
         if return_snapshots:
             return times, Ms, Es, snaps

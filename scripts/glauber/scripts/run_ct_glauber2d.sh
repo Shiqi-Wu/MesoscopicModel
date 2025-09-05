@@ -16,7 +16,8 @@ T_END=5.0
 SNAPSHOT_DT=0.1
 ROUNDS=1
 BLOCK=8
-KERNEL="nearest"  # "nearest" or "gaussian"
+KERNEL="gaussian"  # "nearest" or "gaussian"
+R=0.015625  # only used if KERNEL is "gaussian"
 
 OUTDIR="results/ct_glauber"
 
@@ -36,4 +37,5 @@ python scripts/glauber/tasks/main_ct_glauber2d.py \
     --block $BLOCK \
     --outdir $OUTDIR \
     --kernel $KERNEL \
+    --R $R \
 
