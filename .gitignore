@@ -1,2 +1,6 @@
 data/
-results
+results/
+
+.idea/
+.cursorrules
+pyproject.toml

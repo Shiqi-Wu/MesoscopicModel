@@ -33,3 +33,9 @@
     1. .gitkeep
 5. notes/
     1. tex files
+
+
+# My Questions
+1. why the shape is 502 from 0 to 5, why not 501?
+2. plot for given spins
+   1. python tests/test_animation.py 
