@@ -176,7 +176,10 @@ def analyze_data(spins, times, metadata):
 def main():
     """Main function to test data loading"""
     print("🧪 Testing data loading from data/ directory")
-    FILE_PATH = "data/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_Tfrac3_J1_h0_tend5.0_dt0.01_block8_kernelnearest_R0.015625_seed0/round0/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_Tfrac3_J1_h0_tend5.0_dt0.01_block8_kernelnearest_R0.015625_seed0_round0.npz"
+    # FILE_PATH = "data/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_Tfrac3_J1_h0_tend5.0_dt0.01_block8_kernelnearest_R0.015625_seed0/round0/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_Tfrac3_J1_h0_tend5.0_dt0.01_block8_kernelnearest_R0.015625_seed0_round0.npz"
+
+    FILE_PATH = "data/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_Tfrac3_J1_h0_tend5.0_dt0.01_block8_kernelgaussian_epsilon0.015625_seed0/round0/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_Tfrac3_J1_h0_tend5.0_dt0.01_block8_kernelgaussian_epsilon0.015625_seed0_round0.npz"  # Adjust this to your data directory
+    OUTPUT_PATH = "results/test_animation.html"
 
     # Test 1: Load single file
     # data, metadata = load_single_data_file()
@@ -197,7 +200,7 @@ def main():
         spins=spins,
         times=times,
         metadata=metadata,
-        output_path="results/test_animation.html",
+        output_path=OUTPUT_PATH,
         max_frames=20,
     )
     print("✅ Animation created successfully!")
@@ -224,6 +227,7 @@ def main():
 
     print("\n" + "=" * 60)
     print("✅ Data loading test completed!")
+    print(f"📁 Animation file saved to: {OUTPUT_PATH}")
     print("=" * 60)
 
 
