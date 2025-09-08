@@ -1,33 +1,22 @@
-# kac_kernel.py
 import numpy as np
 from numpy.fft import fft2, ifft2
 
-def build_kernel_fft(L, R_phys, kernel="gaussian", sigma=0.1):
-    spacing = 1.0 / L
-    R_lat = int(np.ceil(R_phys / spacing))
-
+def build_kernel_fft(L, epsilon):
+    """
+    构造理论 Gaussian Kac kernel 的 FFT 形式:
+    J_epsilon(x) = (2π ε^2)^(-1) exp(-||x||^2 / (2ε^2)), d=2
+    """
+    spacing = 1.0 / L   # 格点间距 (单位方格)
     kern = np.zeros((L, L), dtype=np.float64)
-    offsets = []  # 用于存储邻域相对坐标和权重
 
-    for dx in range(-R_lat, R_lat+1):
-        for dy in range(-R_lat, R_lat+1):
+    # 构造格点坐标 (周期性)
+    for dx in range(-L//2, L//2):
+        for dy in range(-L//2, L//2):
             dist = spacing * np.sqrt(dx*dx + dy*dy)
-            if dist > R_phys:
-                continue
-            if dx == 0 and dy == 0:
-                continue
-            if kernel == "gaussian":
-                w = np.exp(-0.5 * (dist/sigma)**2)
-            else:
-                w = 1.0
+            w = (1.0 / (2.0 * np.pi * epsilon**2)) * np.exp(-0.5 * (dist/epsilon)**2)
             kern[dx % L, dy % L] = w
-            offsets.append((dx, dy, w))
 
-    kern /= kern.sum()
-    norm = sum(w for _,_,w in offsets)
-    offsets = [(dx,dy,w/norm) for dx,dy,w in offsets]
-
-    return fft2(kern), offsets
+    return fft2(kern)
 
 def conv_spin(spin, kernel_fft):
     """

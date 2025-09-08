@@ -10,16 +10,19 @@ SEED=0
 # Simulation parameters
 SIZE=1024
 J=1.0
-H=0.0
-T_FRAC=3
+H=1.0
+T=4.0
 T_END=5.0
-SNAPSHOT_DT=0.1
+SNAPSHOT_DT=0.01
 ROUNDS=1
 BLOCK=8
-KERNEL="gaussian"  # "nearest" or "gaussian"
-R=0.015625  # only used if KERNEL is "gaussian"
+# KERNEL="gaussian"  # "nearest" or "gaussian"
+# EPISILON=0.03125  # only used if KERNEL is "gaussian"
 
-OUTDIR="results/ct_glauber"
+KERNEL="nearest"  # "nearest" or "gaussian"
+EPISILON=0.0  # only used if KERNEL is "gaussian
+
+OUTDIR="data/ct_glauber"
 
 python scripts/glauber/tasks/main_ct_glauber2d.py \
     --size $SIZE \
@@ -30,12 +33,13 @@ python scripts/glauber/tasks/main_ct_glauber2d.py \
     --seed $SEED \
     --J $J \
     --h $H \
-    --T_frac $T_FRAC \
+    --T $T \
     --t_end $T_END \
     --snapshot_dt $SNAPSHOT_DT \
     --rounds $ROUNDS \
     --block $BLOCK \
     --outdir $OUTDIR \
     --kernel $KERNEL \
-    --R $R \
+    --epsilon $EPISILON \
+    --use_gpu \
 
