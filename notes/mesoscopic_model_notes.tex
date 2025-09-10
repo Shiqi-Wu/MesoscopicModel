@@ -221,7 +221,7 @@ Our computational experiments are designed to systematically explore the paramet
     \item \textbf{Spatial resolution}: $\delta = 1/M = 0.007812$
 \end{itemize}
 
-\subsection{Temperature Regimes}
+\subsubsection{Temperature Regimes}
 
 We investigate two distinct temperature regimes:
 
@@ -230,7 +230,7 @@ We investigate two distinct temperature regimes:
     \item \textbf{High temperature} ($T = 3.0$): Above critical temperature, corresponding to the disordered phase where $T/T_c \approx 1.32$
 \end{enumerate}
 
-\subsection{External Field Variations}
+\subsubsection{External Field Variations}
 
 The external magnetic field $h$ is varied across four values to study its effect on the system dynamics:
 
@@ -241,7 +241,7 @@ The external magnetic field $h$ is varied across four values to study its effect
     \item $h = 2.0$ (strong external field)
 \end{itemize}
 
-\subsection{Kernel Range Studies}
+\subsubsection{Kernel Range Studies}
 
 To investigate the role of interaction range in nonlocal dynamics, we vary the kernel domain size:
 
@@ -261,6 +261,68 @@ This computational framework will provide insights into:
     \item The role of nonlocal interactions in pattern formation
     \item Machine learning approaches for complex dynamics
 \end{itemize}
+
+\subsection{Data v.s. PDE Solutions}
+
+% with epsilon = 0.015625
+
+\begin{figure}[!h]
+    \centering
+    \includegraphics[width=1.0\textwidth]{fig/pde_comparison_h0_T1_eps0.015625.png}
+    \caption{Comparison of original data and PDE solutions for $h=0$, $T=1$, $\epsilon=0.015625$.}
+\end{figure}
+
+
+\begin{figure}[!h]
+    \centering
+    \includegraphics[width=1.0\textwidth]{fig/pde_comparison_h0_T4_eps0.015625.png}
+    \caption{Comparison of original data and PDE solutions for $h=0$, $T=4$, $\epsilon=0.015625$.}
+\end{figure}
+
+
+\begin{figure}[!h]
+    \centering
+    \includegraphics[width=1.0\textwidth]{fig/pde_comparison_h1_T1_eps0.015625.png}
+    \caption{Comparison of original data and PDE solutions for $h=1$, $T=1$, $\epsilon=0.015625$.}
+\end{figure}
+
+
+\begin{figure}[!h]
+    \centering
+    \includegraphics[width=1.0\textwidth]{fig/pde_comparison_h1_T4_eps0.015625.png}
+    \caption{Comparison of original data and PDE solutions for $h=1$, $T=4$, $\epsilon=0.015625$.}
+\end{figure}
+
+% with epsilon = 0.03125
+
+\begin{figure}[!h]
+    \centering
+    \includegraphics[width=1.0\textwidth]{fig/pde_comparison_h0_T1_eps0.03125.png}
+    \caption{Comparison of original data and PDE solutions for $h=0$, $T=1$, $\epsilon=0.03125$.}
+\end{figure}
+
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=1.0\textwidth]{fig/pde_comparison_h0_T4_eps0.03125.png}
+    \caption{Comparison of original data and PDE solutions for $h=0$, $T=4$, $\epsilon=0.03125$.}
+\end{figure}
+
+
+\begin{figure}[!h]
+    \centering
+    \includegraphics[width=1.0\textwidth]{fig/pde_comparison_h1_T1_eps0.03125.png}
+    \caption{Comparison of original data and PDE solutions for $h=1$, $T=1$, $\epsilon=0.03125$.}
+\end{figure}
+
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=1.0\textwidth]{fig/pde_comparison_h1_T4_eps0.03125.png}
+    \caption{Comparison of original data and PDE solutions for $h=1$, $T=4$, $\epsilon=0.03125$.}
+\end{figure}
+
+
 
 \section{Network Training}
 
@@ -291,11 +353,13 @@ We have a generator parameterized like
 If the objective is to infer the interaction kernel J from data: 
 (the obs part is obtained by difference? how we verify the learned structure?)
 
-$$
-J^\star, F^\star \;=\; \arg\min_{J, F}\;
+\begin{equation}
+    J^\star, F^\star \;=\; \arg\min_{J, F}\;
 \sum_{m \in \mathcal{D}}
 \bigl\|\, \mathcal{L}(m;J,F)\;-\;\partial_t m_{\mathrm{obs}} \,\bigr\|_{L^2(\Omega)}^{2}.
-$$
+
+\end{equation}
+
 
 \nocite{*}
 \printbibliography
