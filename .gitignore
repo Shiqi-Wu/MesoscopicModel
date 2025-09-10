@@ -1,6 +1,25 @@
 data/
 results/
 
+# Editors/IDE
+.vscode/
 .idea/
 .cursorrules
-pyproject.toml
+
+# Python build/cache artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.nbc
+*.nbi
+*.log
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# Packaging / build
+build/
+dist/
+*.egg-info/

@@ -1,13 +1,9 @@
-*.aux
-*.log
-*.out
-*.toc
-*.fls
-*.fdb_latexmk
-*.synctex.gz
-*.bbl
-*.blg
-*.nav
-*.bcf
-*.run.xml
-*.snm
+# Keep only sources and figures; ignore generated artifacts
+*
+!.gitignore
+!*.tex
+!*.bib
+!fig/
+
+# Allow nested files in fig/
+!fig/**

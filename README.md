@@ -35,7 +35,15 @@
     1. tex files
 
 
-# My Questions
-1. why the shape is 502 from 0 to 5, why not 501?
-2. plot for given spins
-   1. python tests/test_animation.py 
+# Group Meeting
+
+## 2025.09.10
+1. accelerate the continuous time simulation for Glauber dynamics.
+2. check with more trials for each param setting, also larger L.
+3. since the convergence rate depends on h, T, the convergence time varies. thus, we need more simulation time.
+4. add second order statistics evolution curve.
+5. test with simple local Allen-Cahn Equation, check with different size of $\gamma$.
+6. we may need assumptions for the MLP force network to be unique.
+7. start with the grountruth initialization of J, to see the minimum loss.
+8. not sure about the time thing in the data and nn training, to check.
+9. landau enegry as Lyapunov function? at least it's a local func when temperature is high.
