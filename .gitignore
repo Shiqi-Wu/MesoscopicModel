@@ -5,6 +5,7 @@ results/
 .vscode/
 .idea/
 .cursorrules
+<<<<<<< HEAD
 
 # Python build/cache artifacts
 __pycache__/
@@ -23,3 +24,11 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+=======
+pyproject.toml
+*。nbi
+*.nbc
+*.pyc
+>>>>>>> abaaa73 (tau leaping)
+__pycache__/
+*.pyc
