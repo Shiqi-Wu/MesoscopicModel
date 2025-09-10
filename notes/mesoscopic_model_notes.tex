@@ -115,10 +115,12 @@ The corresponding flip probability can be written in several equivalent forms:
         \quad \text{(logistic form)} \\
     &= \frac{\exp\!\big(-\beta\sigma(x) h_{\gamma}(x)\big)}
             {2\cosh\!\big(\beta h_{\gamma}(x)\big)} 
-        \quad \text{(factorized form, cf.~Masi et al.)}.
+        \quad \text{(factorized form, cf.~Masi et al.\cite{de1994glauber})}.
 \end{split}
 \end{equation}
 Here, $\Delta H_x = H(\sigma^x) - H(\sigma) = 2\sigma(x)h_\gamma(x)$ denotes the energy change when flipping the spin at $x$.
+
+\paragraph{Initialization by Gaussian Random Field.}
 
 \paragraph{Stochastic Simulation via Gillespie Algorithm.}  
 The Glauber dynamics can be efficiently simulated using the Gillespie algorithm (\cref{alg:gillespie}), 
@@ -157,6 +159,29 @@ The procedure is:
 \end{algorithmic}
 \end{algorithm}
 This algorithm gives an implementation of the Gillespie method for Glauber dynamics, ensuring accurate simulation of the spin system's stochastic behavior.
+
+\paragraph{Stochastic Simulation via $\tau$-leaping Approximation.} The Gillespie algorithm simulates one event at a time, which can be slow for large systems. 
+The \emph{$\tau$-leaping} method accelerates the simulation by leaping over a fixed time step $\tau$. 
+During this interval, event rates are assumed to be constant. 
+The number of events at each site is then sampled from a Poisson distribution. 
+This allows many events to be processed in parallel.
+
+\begin{algorithm}[h]
+\caption{$\tau$-leaping for Glauber dynamics}
+\begin{algorithmic}[1]
+\State Initialize spins $s$, time $t=0$
+\While{$t < T_{\text{end}}$}
+    \State Compute local field $h_{\text{loc}}$
+    \State Compute flip rates $r_i = \frac{1}{1 + \exp(2 \beta h_{\text{loc},i} s_i)}$
+    \State Choose $\tau = \epsilon / \max_i r_i$
+    \State Sample $K_i \sim \mathrm{Poisson}(r_i \tau)$
+    \State Update spins: if $K_i$ is odd, flip $s_i$
+    \State $t \gets t + \tau$
+\EndWhile
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Comparison of Gillespie and $\tau$-leaping} We compare the two methods within a small lattice ($L=128$) to validate the $\tau$-leaping approximation. We use the same initial conditions and parameters for both simulations, and for each method, we run 20 independent trials to account for stochastic variability.
 
 \section{PDE}
 
@@ -218,7 +243,7 @@ Our computational experiments are designed to systematically explore the paramet
     \item \textbf{Critical temperature}: $T_c = 2.27$ (for 2D square lattice)
     \item \textbf{Lattice size}: $L = 1024$ with coarse-graining to $M = 128$
     \item \textbf{Block size}: $B = 8$ (coarse-graining ratio $L/M = 8$)
-    \item \textbf{Spatial resolution}: $\delta = 1/M = 0.007812$
+    \item \textbf{Spatial resolution}: $\delta = 1/M = 0.0078125$
 \end{itemize}
 
 \subsubsection{Temperature Regimes}
