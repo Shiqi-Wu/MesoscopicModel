@@ -124,18 +124,15 @@ class Glauber2DIsingKacGPU:
         # ===== GPU 快路径 =====
         if self.use_gpu:
             L = self.L
-            # 全部进 GPU
             spin_cp = cp.asarray(spin_init.astype(np.int8))
 
             kernel_k_cp = kernel_k if isinstance(kernel_k, cp.ndarray) else cp.asarray(kernel_k)
 
-            # 在 GPU 上求实空间核再取 J00（自作用项）
             kern_real_cp = cp.fft.ifft2(kernel_k_cp).real
             kern_real_cp /= kern_real_cp.sum()
             J00 = float(kern_real_cp[0, 0].get())  # Python float，后续 CPU 也可用
             J00_cp = cp.float64(J00)
 
-            # 初始化（GPU）
             spin_k = cp.fft.fft2(spin_cp)
             conv_val_cp = cp.fft.ifft2(kernel_k_cp * spin_k).real
             hloc_cp = h + J0 * (conv_val_cp - J00_cp * spin_cp)
@@ -147,7 +144,6 @@ class Glauber2DIsingKacGPU:
             snap_list = []
             time_list = []
 
-            # 初始快照
             time_list.append(0.0)
             snap_list.append(cp.asnumpy(spin_cp))
             next_snap += snapshot_dt
@@ -159,13 +155,11 @@ class Glauber2DIsingKacGPU:
                 x, y = divmod(idx, L)
                 spin_cp[x, y] = -spin_cp[x, y]
 
-                # 更新（GPU 全流程）
                 spin_k = cp.fft.fft2(spin_cp)
                 conv_val_cp = cp.fft.ifft2(kernel_k_cp * spin_k).real
                 hloc_cp = h + J0 * (conv_val_cp - J00_cp * spin_cp)
                 r_cp = 1.0 / (1.0 + cp.exp(cp.clip(2.0 * beta * hloc_cp * spin_cp, -30, 30)))
 
-                # 存快照（尽量稀疏）
                 while t >= next_snap and next_snap <= t_end:
                     time_list.append(next_snap)
                     snap_list.append(cp.asnumpy(spin_cp))
@@ -177,11 +171,9 @@ class Glauber2DIsingKacGPU:
                 if verbose_every and (steps % verbose_every == 0):
                     print(f"[GPU] t={t:.3f}/{t_end}, steps={steps}, next_snap={next_snap:.3f}", end="\r")
 
-            # 转回 numpy 输出
             times = np.array(time_list, dtype=np.float64)
             snaps = np.stack(snap_list, axis=0).astype(np.int8)
 
-            # 为了计算能量：把 kernel_k 也拷回 CPU 一份
             kernel_k_np = cp.asnumpy(kernel_k_cp)
 
             Ms = np.array([self._calc_magnetization(snaps[i]) for i in range(snaps.shape[0])])
@@ -191,7 +183,6 @@ class Glauber2DIsingKacGPU:
                 return times, Ms, Es
             return times, Ms, Es, snaps
 
-        # ===== CPU 路径（与你之前逻辑一致）=====
         # 自作用项 J(0) 从实空间核取
         kern_real = np.fft.ifft2(kernel_k).real
         kern_real /= kern_real.sum()
@@ -245,10 +236,87 @@ class Glauber2DIsingKacGPU:
         if not return_snapshots:
             return times, Ms, Es
         return times, Ms, Es, snaps
+    
+    def simulate_kac_tauleap(self, spin_init, beta, J0=1.0, h=0.0,
+                         epsilon=0.1, kernel_type="gaussian",
+                         t_end=5.0, snapshot_dt=0.1, eps_tau=0.01,
+                         return_snapshots=True, verbose_every=1000):
+        """
+        Continuous-time Glauber dynamics with tau-leaping.
+        - eps_tau: control parameter for tau selection.
+        - verbose_every: print progress every N steps.
+        """
 
-# -------------------------------
+        L = self.L
+        spin_cp = cp.asarray(spin_init.astype(np.int8))
+
+        # Kernel in frequency domain
+        kernel_k_cp = build_kernel_k(L, self.Lx, self.Ly, epsilon, kernel_type, use_gpu=True)
+        kern_real_cp = cp.fft.ifft2(kernel_k_cp).real
+        kern_real_cp /= kern_real_cp.sum()
+        J00 = float(kern_real_cp[0, 0].get())  # 一步到位转成 Python float
+        J00_cp = kern_real_cp[0, 0]    
+
+        t = 0.0
+        next_snap = 0.0
+        snap_list = []
+        time_list = []
+
+        time_list.append(0.0)
+        snap_list.append(cp.asnumpy(spin_cp))
+        next_snap += snapshot_dt
+
+        steps = 0
+        while t < t_end:
+            # Compute local fields and rates
+            spin_k = cp.fft.fft2(spin_cp)
+            conv_val_cp = cp.fft.ifft2(kernel_k_cp * spin_k).real
+            hloc_cp = h + J0 * (conv_val_cp - J00_cp * spin_cp)
+            r_cp = 1.0 / (1.0 + cp.exp(cp.clip(2.0 * beta * hloc_cp * spin_cp, -30, 30)))
+
+            # Rtot = r_cp.sum()
+            r_max = r_cp.max()
+            if r_max == 0:
+                break
+
+            # Determine tau
+            tau = eps_tau / r_max
+            if t + tau > t_end:
+                tau = t_end - t
+
+            # Poisson sampling of flips
+            filps = cp.random.poisson(r_cp * tau)
+
+            # Update spins
+            spin_cp *= cp.where(filps % 2 == 1, -1, 1)
+            t += tau
+
+            # save snapshots
+            while t >= next_snap and next_snap <= t_end:
+                time_list.append(next_snap)
+                snap_list.append(cp.asnumpy(spin_cp))
+                next_snap += snapshot_dt
+                if next_snap > t_end:
+                    break
+
+            steps += 1
+            if verbose_every and (steps % verbose_every == 0):
+                print(f"[GPU Tau-Leap] t={t:.3f}/{t_end}, steps={steps}, next_snap={next_snap:.3f}", end="\r")
+
+        times = np.array(time_list, dtype=np.float64)
+        snaps = np.stack(snap_list, axis=0).astype(np.int8)
+
+        kernel_k_np = cp.asnumpy(kernel_k_cp)
+        J00 = float(J00_cp.get())
+        Ms = np.array([self._calc_magnetization(snaps[i]) for i in range(snaps.shape[0])])
+        Es = np.array([self._calc_energy_fft(snaps[i], J0, h, kernel_k_np, J00) for i in range(snaps.shape[0])])
+
+        if not return_snapshots:
+            return times, Ms, Es
+        return times, Ms, Es, snaps
+
+
 # test functions
-# -------------------------------
 def conv_direct(spin, kern):
     """O(L^4) 直译定义卷积 (for testing small L)."""
     L = spin.shape[0]
