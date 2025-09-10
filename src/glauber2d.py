@@ -234,18 +234,14 @@ class Glauber2DIsingCT:
 
         print(f"[simulate_kac_local] start CT Glauber Kac, L={L}, R={R}, kernel={kernel}, sigma={sigma}, t_end={t_end}")
 
-        # 🔹 构建 FFT 核 + 邻域偏移
         kernel_fft, neighbor_offsets = build_kernel_fft(L, R, kernel, sigma)
 
-        # 初始局域场：全局 FFT 一次
         hloc = h + J0 * conv_spin(spin, kernel_fft)
 
-        # 初始速率
         r = np.exp(-beta * hloc * spin) / (2.0 * np.cosh(beta * hloc))
         Rtot = r.sum()
         print(f"[simulate_kac_local] initial total rate Rtot={Rtot:.3e}")
 
-        # 输出容器
         max_snaps = int(np.ceil(t_end/snapshot_dt)) + 2
         times = np.zeros(max_snaps, np.float64)
         snaps = np.zeros((max_snaps, L, L), np.int8)
@@ -262,12 +258,10 @@ class Glauber2DIsingCT:
         step = 0
 
         while t < t_end and Rtot > 0:
-            # Gillespie 时间步
             u1 = rng.random()
             dt = -np.log(u1) / Rtot
             t += dt
 
-            # 存快照
             while t >= next_snap and n_snaps < times.size:
                 times[n_snaps] = next_snap
                 snaps[n_snaps] = spin
@@ -276,7 +270,6 @@ class Glauber2DIsingCT:
                 if next_snap > t_end:
                     break
 
-            # Gillespie 按速率抽取翻转点
             u2 = rng.random() * Rtot
             s = 0.0
             for i in range(N):
@@ -285,12 +278,10 @@ class Glauber2DIsingCT:
                     break
             x, y = divmod(i, L)
 
-            # 自旋翻转
             old_s = spin[x, y]
             spin[x, y] = -old_s
             delta = spin[x, y] - old_s   # = -2 * old_s
 
-            # 🔹 局部增量更新 hloc + 速率
             for dx, dy, w in neighbor_offsets:
                 xx = (x + dx) % L
                 yy = (y + dy) % L
@@ -299,7 +290,6 @@ class Glauber2DIsingCT:
                 r[xx, yy] = np.exp(-beta * hloc[xx, yy] * spin[xx, yy]) / (2.0*np.cosh(beta*hloc[xx, yy]))
                 Rtot += r[xx, yy] - old_r
 
-            # 自身也要更新
             old_r = r[x, y]
             r[x, y] = np.exp(-beta * hloc[x, y] * spin[x, y]) / (2.0*np.cosh(beta*hloc[x, y]))
             Rtot += r[x, y] - old_r
@@ -308,7 +298,6 @@ class Glauber2DIsingCT:
             if step % 10000 == 0:
                 print(f"  [info] t={t:.3f}, Rtot={Rtot:.3e}, snaps={n_snaps}")
 
-        # 截断输出
         times = times[:n_snaps]
         snaps = snaps[:n_snaps]
 
