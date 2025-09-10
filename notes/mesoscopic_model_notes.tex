@@ -121,17 +121,85 @@ The corresponding flip probability can be written in several equivalent forms:
 Here, $\Delta H_x = H(\sigma^x) - H(\sigma) = 2\sigma(x)h_\gamma(x)$ denotes the energy change when flipping the spin at $x$.
 
 \paragraph{Initialization by Gaussian Random Field.}
+Let the lattice be a periodic $L\times L$ grid
+\begin{equation}
+    \Lambda=\{(x_i,y_j):\ i,j=0,1,\dots,L-1\},\qquad (x_i=i,\ y_j=j).
+\end{equation}
+We will construct a zero-mean, stationary Gaussian random field (GRF) 
+$\phi:\Lambda\to\mathbb{R}$ and then convert it to spins $\sigma_{i,j}\in\{-1,+1\}$.
 
-\paragraph{Stochastic Simulation via Gillespie Algorithm.}  
+A stationary GRF is fully characterized by either its covariance $C(\mathbf{r})$ or its
+power spectral density (PSD) $S(\mathbf{k})$, related by the Fourier transform:
+\begin{equation}
+S(\mathbf{k})=\sum_{\mathbf{r}\in\mathbb{Z}^2} C(\mathbf{r})\,e^{-i\,\mathbf{k}\cdot\mathbf{r}}\!,
+\qquad
+C(\mathbf{r})=\frac{1}{(2\pi)^2}\!\int_{[-\pi,\pi]^2} S(\mathbf{k})\,e^{i\,\mathbf{k}\cdot\mathbf{r}}\,d\mathbf{k}.
+\end{equation}
+
+Typical isotropic choices for $S(\mathbf{k})$ include the Gaussian spectrum
+$S(\mathbf{k})=\sigma^2\exp(-\tfrac{\ell^2}{2}\|\mathbf{k}\|^2)$ with correlation length $\ell$,
+the Matérn spectrum $S(\mathbf{k})\propto (\kappa^2+\|\mathbf{k}\|^2)^{-(\nu+1)}$ with smoothness $\nu$,
+and power-law forms $S(\mathbf{k})\propto \|\mathbf{k}\|^{-\alpha}$ for $\alpha>0$. Larger $\ell$ (or smaller $\alpha$) yields larger coherent blobs, while $\sigma^2$ controls the marginal variance.
+
+On the $L\times L$ periodic lattice, we use discrete wavevectors
+\begin{equation}
+k_x(n)=\tfrac{2\pi n}{L},\quad n=0,\dots,L-1, 
+\qquad k_y(m)=\tfrac{2\pi m}{L},\quad m=0,\dots,L-1,
+\end{equation}
+and set $\mathbf{k}_{n,m}=(k_x(n),k_y(m))$ with $S_{n,m}:=S(\mathbf{k}_{n,m})$. We then construct Fourier coefficients $\widehat{\phi}_{n,m}$ such that
+\begin{equation}
+\widehat{\phi}_{n,m}\sim\mathcal{CN}(0,S_{n,m}),\quad\text{independently over $(n,m)$,}
+\end{equation}
+with Hermitian symmetry $\widehat{\phi}_{(L-n)\bmod L,(L-m)\bmod L}=\overline{\widehat{\phi}_{n,m}}$ to ensure a real field. In practice we set
+\begin{equation}
+\widehat{\phi}_{n,m}=\sqrt{\tfrac{S_{n,m}}{2}}\,(Z^{(1)}_{n,m}+i\,Z^{(2)}_{n,m}),\quad Z^{(1)}_{n,m},Z^{(2)}_{n,m}\overset{\text{i.i.d.}}{\sim}\mathcal{N}(0,1),
+\end{equation}
+and impose conjugacy for paired frequencies. On self-conjugate modes ($n\in\{0,L/2\}$ or $m\in\{0,L/2\}$ for even $L$), we set $\widehat{\phi}_{n,m}\in\mathbb{R}$ by taking $Z^{(2)}_{n,m}=0$.
+
+The GRF is obtained by inverse FFT:
+\begin{equation}
+\phi_{i,j}=\frac{1}{L^2}\sum_{n=0}^{L-1}\sum_{m=0}^{L-1}\widehat{\phi}_{n,m}\,\exp\!\Big(i(k_x(n)x_i+k_y(m)y_j)\Big),
+\qquad (i,j)\in\{0,\dots,L-1\}^2.
+\end{equation}
+Then $\phi$ is a zero-mean Gaussian random field with PSD approximately $S$. The variance of $\phi$ is
+\begin{equation}
+\mathrm{Var}[\phi_{i,j}]=\frac{1}{L^2}\sum_{n,m} S_{n,m},
+\end{equation}
+and one can rescale $\phi$ to achieve a target variance $\sigma_\star^2$. The generated filed $\phi$ is despicted in \cref{fig:grf}.
+\begin{figure}
+    \centering
+    \includegraphics[width=0.8\textwidth]{fig/Gaussian_Random_Field.jpg}
+    \caption{Example realization of a Gaussian random field.}
+    \label{fig:grf}
+\end{figure}
+
+To map $\phi$ into a magnetization-like field $m\in[-1,1]$, one option is
+\begin{equation}
+m_{i,j}=m_0+(1-|m_0|)\,\tanh\!\Big(\tfrac{\phi_{i,j}}{\tau}\Big),
+\end{equation}
+where $m_0$ sets the mean magnetization and $\tau$ controls the nonlinearity, with smaller $\tau$ pushing values toward $\pm 1$. Alternatively, a linear clipping scheme may be used. Spins are then sampled independently with
+\begin{equation}
+\mathbb{P}(\sigma_{i,j}=+1)=\tfrac{1+m_{i,j}}{2},\qquad
+\mathbb{P}(\sigma_{i,j}=-1)=\tfrac{1-m_{i,j}}{2},
+\end{equation}
+yielding an Ising configuration $\sigma\in\{-1,+1\}^{L\times L}$.
+
+The parameter choices have direct impact on structure: the correlation length $\ell$ sets the typical blob size, the global mean $m_0$ fixes magnetization bias, and the field variance or $\tau$ controls contrast. The periodic construction is consistent with the lattice boundary conditions. An equivalent spatial view is to draw white noise $w_{i,j}\sim\mathcal{N}(0,1)$ and convolve with a filter whose Fourier response is $\sqrt{S(\mathbf{k})}$:
+\begin{equation}
+    \phi \;\stackrel{d}{=}\; \mathcal{F}^{-1}\!\Big[\sqrt{S(\mathbf{k})}\,\mathcal{F}[w]\Big],
+\end{equation}
+which for Gaussian $S$ corresponds to a Gaussian blur (with periodic wrap) of white noise.
+
+\paragraph{Stochastic Simulation via Gillespie Algorithm.}
 The Glauber dynamics can be efficiently simulated using the Gillespie algorithm (\cref{alg:gillespie}), 
 which generates statistically exact trajectories of continuous-time Markov processes. 
 The procedure is:
 
 \begin{enumerate}
     \item Compute the total flip rate 
-    \[
+    \begin{equation}
         R = \sum_{x} P\big(\sigma(x)\!\to\!-\sigma(x)\big).
-    \]
+    \end{equation}
     \item Draw the next time increment $\Delta t$ from an exponential distribution with mean $1/R$.
     \item Select a site $x$ to flip with probability proportional to its individual rate.
     \item Update $\sigma(x)\mapsto -\sigma(x)$, recompute local fields if needed, and repeat.
@@ -181,7 +249,34 @@ This allows many events to be processed in parallel.
 \end{algorithmic}
 \end{algorithm}
 
-\paragraph{Comparison of Gillespie and $\tau$-leaping} We compare the two methods within a small lattice ($L=128$) to validate the $\tau$-leaping approximation. We use the same initial conditions and parameters for both simulations, and for each method, we run 20 independent trials to account for stochastic variability.
+\paragraph{Comparison of Gillespie and $\tau$-leaping} We compare the two methods within a small lattice ($L=128$) to validate the $\tau$-leaping approximation. 
+We use the same initial conditions and parameters (temperature $T = 1.0$, coupling strength $J = 1.0$, and external field $h = 0.0$) for both simulations, and for each method, we run 20 independent trials to account for stochastic variability. 
+The results are depicted in \cref{fig:gillespie_vs_tau_leaping}. 
+The top left panel shows the averaged magnetization over time, while the top right panel displays the free energy evolution. The bottom panels illustrate the error between the two methods in terms of magnetization and free energy. 
+The results demonstrate the mean energy and magnetization from both methods are in good agreement, and the varience of $\tau$-leaping is slightly larger than Gillespie. 
+These findings confirm that the $\tau$-leaping method is a valid approximation for simulating Glauber dynamics, providing significant computational speedup (see \cref{tab:gillespie_vs_tau_leaping}) while maintaining accuracy with a small sacrifice in variation.
+\begin{figure}
+    \centering
+    \includegraphics[width=0.8\textwidth]{fig/ising_L128_ell8.0_sigma1.0_tau1.0_m00.2_beta1.0_eps0.02_compare_N20.png}
+    \caption{Comparison of Gillespie and $\tau$-leaping methods for simulating Glauber dynamics on a $128 \times 128$ lattice. The top left panel shows the averaged magnization over time and the top right panel shows the free energy evolution over time. The bottom panels show the error between the two methods in terms of magnetization and free energy.}
+    \label{fig:gillespie_vs_tau_leaping}
+\end{figure}
+
+\begin{table}
+    \centering
+    \begin{tabular}{ll}
+        \hline
+        \hline
+        Method & Simulation Time of 20 Trails \\
+        \hline
+        Gillespie & $786.51$s \\
+        $\tau$-leaping & $10.79$s \\
+        \hline
+        \hline
+    \end{tabular}
+    \caption{Comparison of Gillespie and $\tau$-leaping methods for simulating Glauber dynamics on a $128 \times 128$ lattice. The table shows the final magnetization, free energy, and error for both methods.}
+    \label{tab:gillespie_vs_tau_leaping}
+\end{table}
 
 \section{PDE}
 
