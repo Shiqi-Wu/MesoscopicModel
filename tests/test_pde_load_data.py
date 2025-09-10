@@ -10,6 +10,7 @@ from the loaded dataset.
 import sys
 import os
 import json
+import re
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -26,6 +27,7 @@ from pde_solver import (
     LocalAllenCahnSolver,
     create_solver_from_metadata,
     create_local_solver_from_metadata,
+    create_local_ac_solver_from_metadata,
 )
 from nonlocal_pde_solver import (
     create_nonlocal_parameter_provider,
@@ -161,8 +163,15 @@ def solve_pde_with_loaded_data(data_path: str, solver_type: str = "nonlocal"):
 
     # Use new framework for nonlocal solver
     if solver_type == "nonlocal":
-        # Create provider using new framework
-        provider = create_nonlocal_parameter_provider(data_path, frame_idx=0)
+        # Parse epsilon from path if available for override
+        eps_match = re.search(r"epsilon([0-9]*\.?[0-9]+)", data_path)
+        eps_override = float(eps_match.group(1)) if eps_match else None
+
+        # Create provider using new framework (override interaction_range if parsed)
+        provider_kwargs = {"frame_idx": 0}
+        if eps_override is not None:
+            provider_kwargs["interaction_range"] = eps_override
+        provider = create_nonlocal_parameter_provider(data_path, **provider_kwargs)
         params = provider.get_params()
         print(f"\n✅ Created nonlocal solver (new framework)")
         print(f"  Interaction strength: {params.interaction_strength}")
@@ -175,6 +184,7 @@ def solve_pde_with_loaded_data(data_path: str, solver_type: str = "nonlocal"):
         result = solve_nonlocal_allen_cahn(provider, method="rk4", show_progress=True)
         final_field = result["phi"][-1]  # Last time step
         trajectory = result["phi"]  # Full trajectory
+        pde_times = result["times"]
 
     elif solver_type == "local":
         # Keep using old framework for local solver (for now)
@@ -230,6 +240,7 @@ def solve_pde_with_loaded_data(data_path: str, solver_type: str = "nonlocal"):
     if solver_type == "nonlocal":
         return_data["solver_type"] = "nonlocal_new_framework"
         return_data["params"] = params if "params" in locals() else None
+        return_data["pde_times"] = pde_times if "pde_times" in locals() else None
     else:
         return_data["solver"] = solver
         return_data["solver_type"] = "local_old_framework"
@@ -243,7 +254,7 @@ def compare_solutions(data_path: str):
     print("Comparing Nonlocal PDE vs Original Data")
     print("=" * 60)
 
-    # Solve with nonlocal solver only
+    # Solve with nonlocal solver
     nonlocal_result = solve_pde_with_loaded_data(data_path, "nonlocal")
 
     if nonlocal_result is None:
@@ -253,50 +264,126 @@ def compare_solutions(data_path: str):
     # Extract data for comparison
     original_m = nonlocal_result["original_data"]["m"]
     nonlocal_traj = nonlocal_result["trajectory"]
+    nonlocal_times = nonlocal_result.get("pde_times")
+    if nonlocal_times is None:
+        dt = nonlocal_result["metadata"]["snapshot_dt"]
+        t_end = nonlocal_result["metadata"]["t_end"]
+        nonlocal_times = np.linspace(0, t_end, len(nonlocal_traj))
+
+    # (Removed Local AC solve)
 
     # Create time arrays
-    dt = nonlocal_result["metadata"]["snapshot_dt"]
-    t_end = nonlocal_result["metadata"]["t_end"]
-    pde_times = np.linspace(0, t_end, len(nonlocal_traj))
+    pde_times = nonlocal_times
     original_times = nonlocal_result["original_data"]["t"]
 
     # Calculate magnetization evolution
     original_mag = [original_m[i].mean() for i in range(len(original_m))]
     nonlocal_mag = [nonlocal_traj[i].mean() for i in range(len(nonlocal_traj))]
+    # (Removed Local AC magnetization)
 
-    # Create comparison plots (2x3 grid to show all states)
-    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    # Indices/time alignment for time-series comparisons
+    T_data = len(original_m)
+    T_pde = len(nonlocal_traj)
+    min_len = min(T_data, T_pde)
+    orig_idx = np.linspace(0, T_data - 1, min_len, dtype=int)
+    pde_idx = np.linspace(0, T_pde - 1, min_len, dtype=int)
+    times_aligned = original_times[orig_idx]
 
-    # Plot 1: Magnetization evolution
-    axes[0, 0].plot(
-        original_times, original_mag, "b-", label="Original Data", linewidth=3
-    )
-    axes[0, 0].plot(pde_times, nonlocal_mag, "r--", label="Nonlocal PDE", linewidth=3)
-    axes[0, 0].set_xlabel("Time", fontsize=12)
-    axes[0, 0].set_ylabel("Average Magnetization", fontsize=12)
+    # Free energy vs time (mean-field functional):
+    # F[m] = ∫ [ (1/beta)(p ln p + q ln q) - (J0/2) m (J*m) - h m ] dx
+    # with p=(1+m)/2, q=(1-m)/2, J normalized so sum(J)=1 (cyclic conv)
+    params = nonlocal_result.get("params")
+    if params is not None:
+        J0 = float(params.interaction_strength)
+        h_field = float(params.h_field)
+        beta = float(params.beta)
+        Mgrid = int(original_m.shape[-1])
+
+        def _build_kernel_k(M: int, eps: float) -> np.ndarray:
+            dx = 1.0 / M
+            grid = np.arange(M, dtype=np.float32)
+            rx = np.minimum(grid, M - grid) * dx
+            ry = rx
+            RX, RY = np.meshgrid(rx, ry, indexing="ij")
+            R = np.sqrt(RX * RX + RY * RY)
+            Jr = np.exp(-(R * R) / (2.0 * params.interaction_range**2)) / (
+                2.0 * np.pi * params.interaction_range**2
+            )
+            s = Jr.sum()
+            if s > 0:
+                Jr = Jr / s
+            Jr_rolled = np.fft.ifftshift(Jr)
+            return np.fft.fft2(Jr_rolled)
+
+        kernel_k = _build_kernel_k(Mgrid, float(params.interaction_range))
+
+        def _conv_J(m: np.ndarray) -> np.ndarray:
+            return np.fft.ifft2(np.fft.fft2(m) * kernel_k).real
+
+        def _free_energy_series(
+            traj: np.ndarray, times: np.ndarray
+        ) -> tuple[np.ndarray, np.ndarray]:
+            Tn = traj.shape[0]
+            F = np.empty(Tn, dtype=np.float64)
+            dxdy = (1.0 / Mgrid) * (1.0 / Mgrid)
+            for i in range(Tn):
+                m = traj[i]
+                m_clip = np.clip(m, -1.0 + 1e-6, 1.0 - 1e-6)
+                p = 0.5 * (1.0 + m_clip)
+                q = 0.5 * (1.0 - m_clip)
+                ent = (p * np.log(p) + q * np.log(q)) / beta
+                Jm = _conv_J(m)
+                E_int = -0.5 * J0 * m * Jm
+                E_h = -h_field * m
+                density = ent + E_int + E_h
+                F[i] = np.sum(density) * dxdy
+            return times[:Tn], F
+
+        tF_data, F_data = _free_energy_series(original_m, original_times)
+        tF_pde, F_pde = _free_energy_series(nonlocal_traj, pde_times)
+        T_align_F = min(len(tF_data), len(tF_pde))
+        tF = tF_data[:T_align_F]
+        F_data = F_data[:T_align_F]
+        F_pde = F_pde[:T_align_F]
+    else:
+        tF = np.array([])
+        F_data = np.array([])
+        F_pde = np.array([])
+
+    # Create comparison plots (2x4 grid, larger figure to avoid crowding)
+    fig, axes = plt.subplots(2, 4, figsize=(24, 12))
+
+    # Plot 1: Original Data - Initial (move to first column)
+    im1 = axes[0, 0].imshow(original_m[0], cmap="RdBu_r", vmin=-1, vmax=1)
     axes[0, 0].set_title(
-        "Magnetization Evolution Comparison", fontsize=14, fontweight="bold"
-    )
-    axes[0, 0].legend(fontsize=12)
-    axes[0, 0].grid(True, alpha=0.3)
-
-    # Plot 2: Original Data - Initial
-    im1 = axes[0, 1].imshow(original_m[0], cmap="RdBu_r", vmin=-1, vmax=1)
-    axes[0, 1].set_title(
         "Original Data - Initial (t=0)", fontsize=14, fontweight="bold"
+    )
+    axes[0, 0].set_xlabel("x")
+    axes[0, 0].set_ylabel("y")
+    plt.colorbar(im1, ax=axes[0, 0])
+
+    # Plot 2: Original Data - Final (move to middle)
+    im2 = axes[0, 1].imshow(original_m[-1], cmap="RdBu_r", vmin=-1, vmax=1)
+    axes[0, 1].set_title(
+        "Original Data - Final (t=5.0)", fontsize=14, fontweight="bold"
     )
     axes[0, 1].set_xlabel("x")
     axes[0, 1].set_ylabel("y")
-    plt.colorbar(im1, ax=axes[0, 1])
+    plt.colorbar(im2, ax=axes[0, 1])
 
-    # Plot 3: Original Data - Final
-    im2 = axes[0, 2].imshow(original_m[-1], cmap="RdBu_r", vmin=-1, vmax=1)
-    axes[0, 2].set_title(
-        "Original Data - Final (t=5.0)", fontsize=14, fontweight="bold"
+    # Plot 3: Magnetization evolution (move to first-row rightmost)
+    axes[0, 2].plot(
+        original_times, original_mag, "b-", label="Original Data", linewidth=3
     )
-    axes[0, 2].set_xlabel("x")
-    axes[0, 2].set_ylabel("y")
-    plt.colorbar(im2, ax=axes[0, 2])
+    axes[0, 2].plot(pde_times, nonlocal_mag, "r--", label="Nonlocal PDE", linewidth=3)
+    # (Local AC curve removed)
+    axes[0, 2].set_xlabel("Time", fontsize=12)
+    axes[0, 2].set_ylabel("Average Magnetization", fontsize=12)
+    axes[0, 2].set_title(
+        "Magnetization Evolution Comparison", fontsize=14, fontweight="bold"
+    )
+    axes[0, 2].legend(fontsize=12, loc="best")
+    axes[0, 2].grid(True, alpha=0.3)
 
     # Plot 4: Nonlocal PDE - Initial
     im3 = axes[1, 0].imshow(nonlocal_traj[0], cmap="RdBu_r", vmin=-1, vmax=1)
@@ -322,11 +409,62 @@ def compare_solutions(data_path: str):
     axes[1, 2].set_ylabel("y")
     plt.colorbar(im5, ax=axes[1, 2])
 
-    plt.tight_layout()
+    # Plot 7: Free Energy vs Time (top-right)
+    if tF.size > 0:
+        axes[0, 3].plot(tF, F_data, color="blue", linewidth=2, label="Data F[m]")
+        axes[0, 3].plot(
+            tF, F_pde, color="red", linestyle="--", linewidth=2, label="PDE F[m]"
+        )
+        axes[0, 3].set_xlabel("Time", fontsize=12)
+        axes[0, 3].set_ylabel("Free Energy", fontsize=12)
+        axes[0, 3].set_title("Free Energy vs Time", fontsize=14, fontweight="bold")
+        axes[0, 3].legend(fontsize=10)
+        axes[0, 3].grid(True, alpha=0.3)
+    else:
+        axes[0, 3].axis("off")
 
-    # Save plot
+    # Plot 8: Phase area fraction (m>0) vs Time (bottom-right)
+    frac_pos_data = [(original_m[orig_idx[i]] > 0.0).mean() for i in range(min_len)]
+    frac_pos_pde = [(nonlocal_traj[pde_idx[i]] > 0.0).mean() for i in range(min_len)]
+    axes[1, 3].plot(
+        times_aligned, frac_pos_data, color="blue", linewidth=2, label="Data frac(m>0)"
+    )
+    axes[1, 3].plot(
+        times_aligned,
+        frac_pos_pde,
+        color="red",
+        linestyle="--",
+        linewidth=2,
+        label="PDE frac(m>0)",
+    )
+    axes[1, 3].set_xlabel("Time", fontsize=12)
+    axes[1, 3].set_ylabel("Area fraction (m>0)", fontsize=12)
+    axes[1, 3].set_ylim([0.0, 1.0])
+    axes[1, 3].set_title("Phase Area Fraction vs Time", fontsize=14, fontweight="bold")
+    axes[1, 3].legend(fontsize=10)
+    axes[1, 3].grid(True, alpha=0.3)
+
+    # Add overall title with parameters
+    title_suffix = ""
+    p = nonlocal_result.get("params")
+    if p is not None:
+        T_val = (1.0 / float(p.beta)) if float(p.beta) != 0 else float("nan")
+        h_val = float(p.h_field)
+        eps_val = float(p.interaction_range)
+        title_suffix = f" (h={h_val:g}, T={T_val:g}, eps={eps_val:g})"
+    fig.suptitle(f"PDE Comparison{title_suffix}", fontsize=16, fontweight="bold")
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+    # Save plot with h, T, epsilon in name
     os.makedirs("results", exist_ok=True)
-    output_path = "results/pde_comparison_with_loaded_data.png"
+    p = nonlocal_result.get("params")
+    if p is not None:
+        T_val = (1.0 / float(p.beta)) if float(p.beta) != 0 else float("nan")
+        h_val = float(p.h_field)
+        eps_val = float(p.interaction_range)
+        output_path = f"results/pde_comparison_h{h_val:g}_T{T_val:g}_eps{eps_val:g}.png"
+    else:
+        output_path = "results/pde_comparison_with_loaded_data.png"
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     print(f"\n✅ Comparison plot saved to: {output_path}")
 
@@ -365,7 +503,13 @@ def main():
     # data_path = "data/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_Tfrac3_J1_h0_tend5.0_dt0.01_block8_kernelnearest_R0.015625_seed0/round0/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_Tfrac3_J1_h0_tend5.0_dt0.01_block8_kernelnearest_R0.015625_seed0_round0.npz"
 
     # Alternative data path with Gaussian kernel
-    data_path = "data/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_Tfrac3_J1_h0_tend5.0_dt0.01_block8_kernelgaussian_epsilon0.015625_seed0/round0/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_Tfrac3_J1_h0_tend5.0_dt0.01_block8_kernelgaussian_epsilon0.015625_seed0_round0.npz"
+    # data_path = "data/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_Tfrac3_J1_h0_tend5.0_dt0.01_block8_kernelgaussian_epsilon0.015625_seed0/round0/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_Tfrac3_J1_h0_tend5.0_dt0.01_block8_kernelgaussian_epsilon0.015625_seed0_round0.npz"
+
+    # with T=1 and h=0
+    h = 1
+    T = 4
+    epsilon = 0.03125
+    data_path = f"data/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_T{T}_J1_h{h}_tend5.0_dt0.01_block8_kernelgaussian_epsilon{epsilon}_seed0/round0/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_T{T}_J1_h{h}_tend5.0_dt0.01_block8_kernelgaussian_epsilon{epsilon}_seed0_round0.npz"
 
     if not os.path.exists(data_path):
         print(f"❌ Data file not found: {data_path}")
@@ -461,7 +605,7 @@ def create_interactive_plot(data_path: str):
         col=1,
     )
 
-    # Plot 2: Original data initial
+    # Plot 2: Original data initial (bottom-left)
     fig.add_trace(
         go.Heatmap(
             z=original_m[0],
@@ -475,7 +619,7 @@ def create_interactive_plot(data_path: str):
         col=1,
     )
 
-    # Plot 3: Nonlocal PDE final
+    # Plot 3: Nonlocal PDE final (bottom-right)
     fig.add_trace(
         go.Heatmap(
             z=nonlocal_traj[-1],
@@ -511,8 +655,23 @@ def create_interactive_plot(data_path: str):
         fig.update_xaxes(title_text="x", row=2, col=i)
         fig.update_yaxes(title_text="y", row=2, col=i)
 
-    # Save interactive plot
-    output_path = "results/interactive_pde_comparison.html"
+    # Save interactive plot with parameters in filename and title suffix
+    os.makedirs("results", exist_ok=True)
+    T_val = (1.0 / float(params.beta)) if float(params.beta) != 0 else float("nan")
+    h_val = float(params.h_field)
+    eps_val = float(params.interaction_range)
+    title_suffix = f" (h={h_val:g}, T={T_val:g}, ε={eps_val:g})"
+    fig.update_layout(
+        title={
+            "text": f"Interactive Nonlocal PDE vs Data Comparison{title_suffix}",
+            "x": 0.5,
+            "xanchor": "center",
+            "font": {"size": 20},
+        }
+    )
+    output_path = (
+        f"results/interactive_pde_comparison_h{h_val:g}_T{T_val:g}_eps{eps_val:g}.html"
+    )
     fig.write_html(output_path)
     print(f"✅ Interactive plot saved to: {output_path}")
 
@@ -692,8 +851,14 @@ def create_time_series_animation(
         ],
     )
 
-    # Save animated plot
-    anim_output_path = "results/data_vs_pde_evolution.html"
+    # Save animated plot with parameters in filename
+    os.makedirs("results", exist_ok=True)
+    T_val_anim = (
+        (1.0 / float(metadata.beta)) if float(metadata.beta) != 0 else float("nan")
+    )
+    h_val_anim = float(metadata.h_field)
+    eps_val_anim = float(metadata.interaction_range)
+    anim_output_path = f"results/data_vs_pde_evolution_h{h_val_anim:g}_T{T_val_anim:g}_eps{eps_val_anim:g}.html"
     fig_anim.write_html(anim_output_path)
     print(f"✅ Data vs PDE evolution animation saved to: {anim_output_path}")
 
@@ -756,7 +921,7 @@ def create_clear_comparison_plot(data_path: str):
     original_phi = ref_data["macro_field"]  # (T, M, M)
 
     # Create clear comparison plot
-    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+    fig, axes = plt.subplots(3, 3, figsize=(18, 16))
 
     # Plot initial conditions
     axes[0, 0].imshow(original_phi[0], cmap="RdBu_r", vmin=-1, vmax=1)

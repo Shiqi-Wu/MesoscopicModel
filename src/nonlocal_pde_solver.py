@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-NONLOCAL Allen-Cahn PDE Solver
+Nonlocal Glauber–Kac PDE Solver (tanh form)
 
-Core solver for NONLOCAL Allen-Cahn PDE:
-∂t m = Γ(m)[∫ J(r-r') m(r') dr' - f'(m) + h]  (NONLOCAL with convolution)
+Core solver for the nonlocal Glauber–Kac evolution:
+  ∂t m(t,x) = - m(t,x) + tanh( β [ (J * m)(t,x)·J0 + h ] )
 
-The nonlocal term is a convolution integral instead of the local Laplacian.
-This represents the original nonlocal interactions before gradient expansion.
+where (J * m) denotes periodic convolution with a normalized interaction kernel J
+of range ε. The kernel J is discretely normalized so that sum(J)·dx·dy = 1, and
+the overall interaction strength is controlled by J0 (= interaction_strength).
 
-Supports the same parameter sources as local solver:
+Parameter sources:
 1. Manual specification
-2. Theory derivation from Ising simulation
+2. Theory derivation from Ising simulation metadata
 
-Note: This solves the NONLOCAL Allen-Cahn equation. For local PDE,
-see pde_solver.py.
+For the local PDE utilities (including Laplacian-based models), see pde_solver.py.
 """
 
 from __future__ import annotations
@@ -35,15 +35,20 @@ Array = np.ndarray
 @dataclass
 class NonlocalPDEParams:
     """
-    Nonlocal PDE parameter container for nonlocal Allen-Cahn equation:
-    ∂t m = Γ(m)[∫ J(r-r') m(r') dr' - f'(m) + h]
+    Parameters for the nonlocal Glauber–Kac PDE:
+      ∂t m = -m + tanh( β ( J0 (J * m) + h ) )
+
+    Notes:
+    - mobility_prefactor is preserved for backward compatibility but unused here
+    - potential_a/potential_b are unused in the tanh formulation
     """
 
     # Core nonlocal PDE parameters
     interaction_strength: float  # J₀ - interaction strength
     interaction_range: float  # ε - interaction range
-    mobility_prefactor: float  # Γ₀ in Γ(m) = Γ₀(1-m²)
+    mobility_prefactor: float  # kept for backward-compatibility (unused in tanh form)
     h_field: float  # external field h
+    beta: float = 1.0  # inverse temperature β for tanh-based Glauber–Kac
     potential_a: float = 1.0  # cubic term in f'(m) = am³ + bm
     potential_b: float = -1.0  # linear term
 
@@ -220,11 +225,25 @@ class TheoryNonlocalProvider(NonlocalParameterProvider):
         t_end = float(self.meta["t_end"])
         steps = int(t_end / snapshot_dt)
 
+        # Allow overrides from extra_params (without duplicating keywords)
+        interaction_range = self.extra_params.get(
+            "interaction_range", theory_params["interaction_range"]
+        )
+        interaction_strength = self.extra_params.get(
+            "interaction_strength", theory_params["interaction_strength"]
+        )
+        beta = self.extra_params.get("beta", theory_params["beta"])
+        h_field = self.extra_params.get("h_field", theory_params["h"])
+        mobility_prefactor = self.extra_params.get(
+            "mobility_prefactor", theory_params["mobility_prefactor"]
+        )
+
         return NonlocalPDEParams(
-            interaction_strength=theory_params["interaction_strength"],
-            interaction_range=theory_params["interaction_range"],
-            mobility_prefactor=theory_params["mobility_prefactor"],
-            h_field=theory_params["h"],
+            interaction_strength=interaction_strength,
+            interaction_range=interaction_range,
+            mobility_prefactor=mobility_prefactor,
+            h_field=h_field,
+            beta=beta,
             M=self.M,
             dt=snapshot_dt,  # Use the same dt as original data
             steps=steps,  # Use the same number of steps as original data
@@ -234,8 +253,19 @@ class TheoryNonlocalProvider(NonlocalParameterProvider):
                 "data_path": self.data_path,
                 "derived_params": theory_params,
                 "description": f"Nonlocal theory from {self.data_path}",
+                "overrides": {
+                    k: v
+                    for k, v in self.extra_params.items()
+                    if k
+                    in {
+                        "interaction_range",
+                        "interaction_strength",
+                        "beta",
+                        "h_field",
+                        "mobility_prefactor",
+                    }
+                },
             },
-            **self.extra_params,
         )
 
     def get_initial_condition(self) -> Array:
@@ -294,53 +324,61 @@ def _create_interaction_kernel(
     Ly: float,
     interaction_range: float,
     kernel_type: str = "gaussian",
-    cutoff: float = 5.0,
+    cutoff: float = 0.0,
 ) -> Array:
     """
-    Create nonlocal interaction kernel J(r-r')
+    Create nonlocal interaction kernel in Fourier space via real-space construction.
 
-    Args:
-        M: Grid size
-        Lx, Ly: Domain size
-        interaction_range: ε - characteristic interaction range
-        kernel_type: "exponential" or "gaussian"
-        cutoff: Cutoff in units of interaction_range
+    Steps:
+      1) Build J(r) on the periodic grid using the shortest-image metric
+      2) Normalize s.t. sum(J) * dx * dy = 1 (unit integral)
+      3) ifftshift to zero-phase, then FFT to obtain kernel_k
+      4) Optionally apply a high-k cutoff (rarely necessary)
 
     Returns:
-        Normalized interaction kernel in Fourier space (for efficiency)
+        kernel_k: FFT2(J_r_rolled)
     """
     dx = Lx / M
     dy = Ly / M
 
-    # Create coordinate grids (centered at 0)
-    x = np.fft.fftfreq(M, dx) * 2 * np.pi  # k_x
-    y = np.fft.fftfreq(M, dy) * 2 * np.pi  # k_y
-    kx, ky = np.meshgrid(x, y, indexing="ij")
-    k = np.sqrt(kx**2 + ky**2)
+    # periodic shortest distances in each axis
+    grid = np.arange(M, dtype=np.float32)
+    rx = np.minimum(grid, M - grid) * dx
+    ry = rx  # same spacing in x and y
+    RX, RY = np.meshgrid(rx, ry, indexing="ij")
+    R = np.sqrt(RX * RX + RY * RY)
 
-    # Create kernel in k-space for different types
-    if kernel_type == "exponential":
-        # J(k) = J₀ / (1 + (k*ε)²) for exponential decay
-        # This gives J(r) ∝ exp(-|r|/ε) in real space
-        kernel_k = 1.0 / (1.0 + (k * interaction_range) ** 2)
-    elif kernel_type == "gaussian":
-        # J(k) = J₀ * exp(-(k*ε)²/2) for Gaussian
-        # This gives J(r) ∝ exp(-r²/(2ε²)) in real space
-        kernel_k = np.exp(-((k * interaction_range) ** 2) / 2.0)
+    # Real-space kernel
+    if kernel_type == "gaussian":
+        # Continuous normalized Gaussian then renormalize discretely
+        eps2 = interaction_range * interaction_range
+        Jr = np.exp(-(R * R) / (2.0 * eps2)) / (2.0 * np.pi * eps2)
+    elif kernel_type == "exponential":
+        # 2D isotropic exponential with continuous normalization ~ 1/(2π ε^2)
+        # Using K(r) ∝ exp(-r/ε) / (2π ε^2), then renormalize discretely
+        Jr = np.exp(-R / max(interaction_range, 1e-12))
+        Jr[Jr < 1e-20] = 0.0
     else:
         raise ValueError(f"Unknown kernel type: {kernel_type}")
 
-    # Apply cutoff in k-space
-    cutoff_k = cutoff / interaction_range
-    kernel_k[k > cutoff_k] = 0.0
+    # Discrete normalization so that sum(Jr) = 1 (so conv(const) = const)
+    sumJ = Jr.sum()
+    if sumJ > 0:
+        Jr = Jr / sumJ
 
-    # Simple normalization for numerical stability
-    # For nonlocal Allen-Cahn, the key is that the kernel represents
-    # the interaction shape, with strength controlled by interaction_strength
-    # Normalize the maximum value to prevent numerical explosion
+    # Zero-phase alignment for cyclic convolution
+    Jr_rolled = np.fft.ifftshift(Jr)
+    kernel_k = np.fft.fft2(Jr_rolled)
 
-    if np.max(kernel_k) > 0:
-        kernel_k /= np.max(kernel_k)  # Normalize max to 1
+    # Optional high-k cutoff
+    if cutoff and cutoff > 0.0:
+        kx = np.fft.fftfreq(M, d=dx) * 2.0 * np.pi
+        ky = np.fft.fftfreq(M, d=dy) * 2.0 * np.pi
+        KX, KY = np.meshgrid(kx, ky, indexing="ij")
+        KK = np.sqrt(KX * KX + KY * KY)
+        cutoff_k = cutoff / max(interaction_range, 1e-12)
+        mask = KK > cutoff_k
+        kernel_k[mask] = 0.0
 
     return kernel_k
 
@@ -368,11 +406,6 @@ def _nonlocal_convolution_fft(m: Array, kernel_k: Array) -> Array:
     return result
 
 
-def _gamma_mobility_nonlocal(m: Array, mobility_prefactor: float) -> Array:
-    """Glauber mobility for nonlocal case: Γ(m) = Γ₀(1-m²)"""
-    return mobility_prefactor * (1.0 - m * m)
-
-
 def solve_nonlocal_allen_cahn(
     provider: NonlocalParameterProvider,
     method: str = "rk4",
@@ -380,9 +413,9 @@ def solve_nonlocal_allen_cahn(
     seed: int = 0,
 ) -> Dict[str, Any]:
     """
-    NONLOCAL Allen-Cahn PDE solver
+    Nonlocal Glauber–Kac PDE solver (tanh form)
 
-    Solves: ∂t m = Γ(m)[∫ J(r-r') m(r') dr' - f'(m) + h] with NONLOCAL convolution
+    Solves: ∂t m = -m + tanh( β ( J0 (J ⊛ m) + h ) ) with periodic convolution
 
     Args:
         provider: Nonlocal parameter provider (manual or theory-derived)
@@ -412,20 +445,13 @@ def solve_nonlocal_allen_cahn(
         params.kernel_cutoff,
     )
 
-    # Auto time step (more conservative for nonlocal case)
+    # Auto time step (conservative for tanh-based nonlocal case)
     if params.dt is None:
-        # For nonlocal case, be much more conservative with time step
-        max_mobility = params.mobility_prefactor
-        max_interaction = params.interaction_strength
-
-        # Very conservative time step for stability
-        dt = (
-            0.01 / (max_mobility + max_interaction)
-            if (max_mobility + max_interaction) > 0
-            else 1e-4
-        )
-        dt = min(0.005, dt)  # Much smaller max timestep
-        dt = max(1e-6, dt)  # Reasonable min timestep
+        # Conservative estimate using β and J0; ensures stability for stiff regimes
+        max_interaction = max(1e-12, params.interaction_strength)
+        dt = 0.01 / (params.beta * max_interaction + 1.0)
+        dt = min(0.005, dt)
+        dt = max(1e-6, dt)
     else:
         dt = params.dt
 
@@ -450,54 +476,23 @@ def solve_nonlocal_allen_cahn(
 
     start_time = time.time()
 
-    # Time evolution: NONLOCAL Allen-Cahn: ∂t m = Γ(m)[∫ J(r-r') m(r') dr' - f'(m) + h]
+    # Time evolution: Glauber–Kac: ∂t m = -m + tanh(β (J0 * (J ⊛ m) + h))
     for step in range(params.steps):
-        # Nonlocal convolution term
-        nonlocal_term = _nonlocal_convolution_fft(phi, kernel_k)
-        nonlocal_term *= params.interaction_strength
 
-        # Mobility and potential
-        mobility = _gamma_mobility_nonlocal(phi, params.mobility_prefactor)
-        f_prime = params.potential_a * (phi**3) + params.potential_b * phi
-
-        # RHS: Γ(m)[∫ J(r-r') m(r') dr' - f'(m) + h]
-        rhs = mobility * (nonlocal_term - f_prime + params.h_field)
-
-        # Alternative Glauber-Kac formulation (commented out):
-        # beta = 1.0 / T  # where T comes from params
-        # rhs = -phi + np.tanh(beta * nonlocal_term + beta * params.h_field)
+        def rhs(state: Array) -> Array:
+            conv = _nonlocal_convolution_fft(state, kernel_k)
+            field = params.interaction_strength * conv + params.h_field
+            return -state + np.tanh(params.beta * field)
 
         # Time step
         if method.lower() == "euler":
-            phi = phi + dt * rhs
+            phi = phi + dt * rhs(phi)
         elif method.lower() == "rk4":
             # Runge-Kutta 4th order
-            k1 = rhs
-            k2 = _gamma_mobility_nonlocal(
-                phi + 0.5 * dt * k1, params.mobility_prefactor
-            ) * (
-                _nonlocal_convolution_fft(phi + 0.5 * dt * k1, kernel_k)
-                * params.interaction_strength
-                - params.potential_a * ((phi + 0.5 * dt * k1) ** 3)
-                - params.potential_b * (phi + 0.5 * dt * k1)
-                + params.h_field
-            )
-            k3 = _gamma_mobility_nonlocal(
-                phi + 0.5 * dt * k2, params.mobility_prefactor
-            ) * (
-                _nonlocal_convolution_fft(phi + 0.5 * dt * k2, kernel_k)
-                * params.interaction_strength
-                - params.potential_a * ((phi + 0.5 * dt * k2) ** 3)
-                - params.potential_b * (phi + 0.5 * dt * k2)
-                + params.h_field
-            )
-            k4 = _gamma_mobility_nonlocal(phi + dt * k3, params.mobility_prefactor) * (
-                _nonlocal_convolution_fft(phi + dt * k3, kernel_k)
-                * params.interaction_strength
-                - params.potential_a * ((phi + dt * k3) ** 3)
-                - params.potential_b * (phi + dt * k3)
-                + params.h_field
-            )
+            k1 = rhs(phi)
+            k2 = rhs(phi + 0.5 * dt * k1)
+            k3 = rhs(phi + 0.5 * dt * k2)
+            k4 = rhs(phi + dt * k3)
             phi = phi + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
         else:
             raise ValueError(f"Unknown method: {method}")
