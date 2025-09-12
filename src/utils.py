@@ -174,3 +174,29 @@ def print_metadata_info(
             f.write("\n".join(output_lines))
 
         print(f"\n💾 Metadata information saved to: {filepath}")
+
+
+def compute_susceptibility_series(
+    field_trajectory: np.ndarray, beta: float
+) -> np.ndarray:
+    """
+    Compute susceptibility χ(t) from a field trajectory m(t,x) using spatial fluctuations:
+
+    χ(t) = β N (⟨m^2⟩_x − ⟨m⟩_x^2), where N = M*M and ⟨·⟩_x is spatial average.
+
+    Args:
+        field_trajectory: array of shape (T, M, M)
+        beta: inverse temperature β = 1/T
+
+    Returns:
+        chi: array of shape (T,) with susceptibility over time
+    """
+    if field_trajectory.ndim != 3:
+        raise ValueError("field_trajectory must have shape (T, M, M)")
+    Tn, M, _ = field_trajectory.shape
+    N = float(M * M)
+    m_mean = field_trajectory.reshape(Tn, -1).mean(axis=1)
+    m2_mean = (field_trajectory**2).reshape(Tn, -1).mean(axis=1)
+    var = m2_mean - m_mean**2
+    chi = beta * N * var
+    return chi

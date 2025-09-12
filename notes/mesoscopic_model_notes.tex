@@ -483,6 +483,52 @@ and the last panel illustrates the phase area fraction (fraction of $m>0$) as a 
 
 
 
+% ------------------------------------------------------------
+\subsection{Error metric and statistical indicators used in comparisons}
+\label{sec:error_and_stats}
+
+We summarize the precise definitions of the error curves and the three statistical indicators displayed in the comparison figures (data, local PDE, nonlocal PDE). We work on the periodic domain $\Omega=[0,1]^2$ discretized by an $M\times M$ grid with spacing $\Delta x = \Delta y = 1/M$ and $N=M^2$ grid points. Spatial integrals are approximated by Riemann sums with weight $\Delta x\,\Delta y = 1/M^2$.
+
+\paragraph{Time alignment.} Let $\{t^{\text{data}}_n\}_{n=0}^{T_{\text{data}}-1}$, $\{t^{\text{loc}}_n\}_{n=0}^{T_{\text{loc}}-1}$ and $\{t^{\text{non}}_n\}_{n=0}^{T_{\text{non}}-1}$ denote the sampled times for the data, local PDE, and nonlocal PDE trajectories, respectively. For plotting time series jointly, we form a common index set of length $T_\ast=\min(T_{\text{data}},T_{\text{loc}},T_{\text{non}})$ by taking linearly spaced integer indices into each sequence (nearest-neighbor subsampling). We denote the aligned fields by $m_{\text{data}}(t_i,\cdot)$, $m_{\text{loc}}(t_i,\cdot)$, and $m_{\text{non}}(t_i,\cdot)$ for $i=0,\dots,T_\ast-1$.
+
+\paragraph{Magnetization (spatial mean).} For any field $m(t,\cdot)$,
+\begin{equation}
+    \overline{m}(t) \;=\; \frac{1}{|\Omega|} \int_{\Omega} m(t,\mathbf{x})\,d\mathbf{x}
+    \;\approx\; \frac{1}{M^2} \sum_{i,j=0}^{M-1} m_{i,j}(t).
+\end{equation}
+We plot $\overline{m}_{\text{data}}(t_i)$, $\overline{m}_{\text{loc}}(t_i)$, and $\overline{m}_{\text{non}}(t_i)$ on a shared time axis.
+
+\paragraph{Free energy used in plots (post-processing functional).} Let $\beta>0$ be the inverse temperature, $h\in\mathbb{R}$ the external field, $J_0\in\mathbb{R}$ an interaction-strength factor, and $J$ a nonnegative, radially symmetric, \emph{sum-normalized} kernel (i.e., the discrete sum of $J$ over the periodic grid equals one). Define $p=(1+m)/2$ and $q=(1-m)/2$. The free energy density used in the plots is
+\begin{equation}
+    f(m) \;=\; \frac{1}{\beta}\Big( p\,\ln p + q\,\ln q \Big)
+    \; -\; \frac{J_0}{2}\, m\, (J*m)
+    \; -\; h\, m,
+\end{equation}
+and the post-processed free energy is
+\begin{equation}
+    F[m](t) \;=\; \int_{\Omega} f\big(m(t,\mathbf{x})\big)\,d\mathbf{x}
+    \;\approx\; \frac{1}{M^2} \sum_{i,j=0}^{M-1} \Bigg[ \frac{1}{\beta}\Big( p_{i,j}\ln p_{i,j} + q_{i,j}\ln q_{i,j} \Big)
+    - \frac{J_0}{2}\, m_{i,j}\, (J*m)_{i,j}
+    - h\, m_{i,j} \Bigg].
+\end{equation}
+Here $(J*m)$ is the \emph{periodic} convolution of $m$ with $J$ on the $M\times M$ grid; in computations it is obtained by constructing $J$ in real space, normalizing to unit discrete sum, applying $\mathrm{ifftshift}$, taking its $\mathrm{fft2}$, and multiplying in Fourier space before an inverse FFT.
+
+\emph{Remark.} This plotted functional differs from the theoretical Lyapunov functional in \cref{sec:nonlocal_theory} by constant shifts and scaling conventions (e.g., factors of $\beta$ and $J_0$); it is chosen to match the numerical post-processing used across data/local/nonlocal trajectories.
+
+\paragraph{Magnetic susceptibility.} The spatial susceptibility is computed as
+\begin{equation}
+    \chi(t) \;=\; \beta\,N\,\Big( \langle m^2(t,\cdot)\rangle_x - \langle m(t,\cdot)\rangle_x^{\,2} \Big),
+\end{equation}
+where $\langle\cdot\rangle_x$ denotes the spatial average over the grid, i.e., $\langle m\rangle_x = M^{-2}\sum m_{i,j}$ and $N=M^2$. We plot $\chi_{\text{data}}(t_i)$, $\chi_{\text{loc}}(t_i)$, and $\chi_{\text{non}}(t_i)$ on a shared time axis.
+
+\paragraph{Mean absolute error curves.} The error curves shown are the \emph{spatial mean absolute error} between PDE solutions and data at aligned times:
+\begin{equation}
+    E_{\text{loc}}(t_i) \;=\; \frac{1}{M^2} \sum_{k,\ell=0}^{M-1} \big|\, m_{\text{loc};\,k\ell}(t_i) - m_{\text{data};\,k\ell}(t_i) \,\big|,
+    \qquad
+    E_{\text{non}}(t_i) \;=\; \frac{1}{M^2} \sum_{k,\ell=0}^{M-1} \big|\, m_{\text{non};\,k\ell}(t_i) - m_{\text{data};\,k\ell}(t_i) \,\big|.
+\end{equation}
+These correspond to the $\textit{Mean $|\mathrm{PDE}-\mathrm{Data}|$ vs Time}$ panel.
+
 \section{Network Training}
 
 Recall that we want to train a network to predict the dynamics of the system.
@@ -490,6 +536,78 @@ Recall that we want to train a network to predict the dynamics of the system.
 \begin{equation}\label{eq:nonlocal-recall}
 \partial_t m(t,x) \;=\; -\,m(t,x)\;+\;\tanh\!\Big(\beta\, (J_\gamma * m)(t,x) + \beta h\Big), \qquad m(0,x)=m_0(x),
 \end{equation}
+
+\section{Theoretical analysis of the nonlocal Glauber--Kac PDE (GPT-generated, to be checked)} 
+\label{sec:nonlocal_theory}
+
+We summarize key analytical properties of the nonlocal evolution \eqref{eq:nonlocal-recall} on the periodic domain $\Omega=\mathbb{T}^d$, where the Kac kernel $J_\gamma$ is nonnegative and normalized (so that $\int_\Omega J_\gamma = 1$), and $\beta>0$ and $h\in\mathbb{R}$ are fixed parameters.
+
+\subsection{Well-posedness and invariant bounds}
+Let $\mathcal{J}[m] = (J_\gamma * m)$ denote periodic convolution. The right-hand side
+\[
+\mathcal{F}[m] \;=\; -m + \tanh\big(\beta\,(\mathcal{J}[m] + h)\big)
+\]
+is locally Lipschitz on $L^\infty(\Omega)$ because $\tanh$ is globally Lipschitz and $\mathcal{J}$ is a bounded linear operator on $L^\infty$. Hence, for any $m_0\in L^\infty$, there exists a unique mild/strong solution $m(t)\in C([0,\infty);L^\infty)$.
+
+Moreover, the interval $(-1,1)$ is invariant: if $\|m_0\|_{L^\infty}\le 1$, then $\|m(t)\|_{L^\infty}<1$ for all $t>0$. Indeed, for any fixed $x$, the map $u\mapsto -u+\tanh(\beta a)$ with $a\in\mathbb{R}$ points inward at $u=\pm1$ since $-\,\operatorname{sign}(u)+\tanh(\cdot)$ has opposite sign at the boundary, and $|\tanh|<1$.
+
+\subsection{Spatially uniform equilibria and mean-field equation}
+Spatially uniform equilibria $m(t,x)\equiv m^*$ satisfy the scalar fixed-point equation
+\begin{equation}\label{eq:mf_fp}
+ m^* \;=\; \tanh\big(\beta(m^* + h)\big),
+\end{equation}
+which coincides with the Curie--Weiss mean-field self-consistency relation. For $h=0$, the unique solution is $m^*=0$ when $\beta\le1$, while for $\beta>1$ a pitchfork bifurcation occurs: $m^*=0$ becomes unstable and two stable nonzero equilibria $\pm m^*(\beta)$ emerge.
+
+\subsection{Linearization and spectral stability}
+Let $m(t,x)=m^*+\varepsilon\,\varphi(t,x)$ with $m^*$ solving \eqref{eq:mf_fp}. Using $\tanh'(z)=\operatorname{sech}^2(z)$,
+\[
+\partial_t \varphi \;=\; -\varphi\; +\; \beta\,\operatorname{sech}^2\!\big(\beta(m^*+h)\big)\; (J_\gamma*\varphi)\; +\; O(\varepsilon^2).
+\]
+Expanding in Fourier modes $\varphi_k e^{i k\cdot x}$, with $\widehat{J_\gamma}(k)$ the Fourier transform of $J_\gamma$, each mode evolves as $\partial_t \varphi_k = \lambda_k\,\varphi_k$ with growth rate
+\begin{equation}\label{eq:lin_rate}
+ \lambda_k \;=\; -1\; +\; \beta\,\operatorname{sech}^2\!\big(\beta(m^*+h)\big)\,\widehat{J_\gamma}(k).
+\end{equation}
+Because $J_\gamma\ge0$ and is normalized, $\widehat{J_\gamma}(0)=1$ and $\widehat{J_\gamma}(k)\le1$. Thus the first loss of stability occurs at the homogeneous mode $k=0$; there is no finite-wavenumber (Turing-type) selection. In particular, for $h=0$ and the disordered equilibrium $m^*=0$ one has $\lambda_k = -1 + \beta\widehat{J_\gamma}(k)$, leading to the mean-field critical value $\beta_c=1$.
+
+\subsection{Lyapunov functional (free energy) and dissipation}
+Define the entropy density $\Phi:[-1,1]\to\mathbb{R}$ by $\Phi'(m)=\operatorname{artanh}(m)$, e.g.
+\begin{equation}\label{eq:entropy}
+ \Phi(m) \;=\; \tfrac12\Big[(1+m)\ln(1+m)+(1-m)\ln(1-m)\Big] - \ln 2.
+\end{equation}
+Consider the functional
+\begin{equation}\label{eq:free_energy}
+ \mathcal{F}[m] \;=\; \int_\Omega \Big( \Phi(m(x)) - \tfrac{\beta}{2}\,m(x)\,(J_\gamma*m)(x) - \beta h\,m(x) \Big)\,dx.
+\end{equation}
+Its $L^2$ variational derivative is
+\begin{equation}\label{eq:variational}
+ \frac{\delta \mathcal{F}}{\delta m}(x) \;=\; \operatorname{artanh}(m(x)) - \beta\Big((J_\gamma*m)(x)+h\Big).
+\end{equation}
+Along solutions of \eqref{eq:nonlocal-recall},
+\begin{align}
+ \frac{d}{dt}\,\mathcal{F}[m(t)]
+ &= \int_\Omega \frac{\delta \mathcal{F}}{\delta m}(x)\,\partial_t m(t,x)\,dx \\
+ &= \int_\Omega \Big( \operatorname{artanh}(m) - \beta(\mathcal{J}[m]+h) \Big)\,\Big( -m + \tanh\big(\beta(\mathcal{J}[m]+h)\big) \Big)\,dx.
+\end{align}
+Using that $\tanh$ and $\operatorname{artanh}$ are mutual inverses and strictly increasing, one has the pointwise inequality
+\[
+ \big(\operatorname{artanh}(x) - y\big)\,\big(\tanh(y) - x\big) \;\le\; 0\quad \text{for all } x\in(-1,1),\; y\in\mathbb{R},
+\]
+with equality iff $x=\tanh(y)$. Hence $\tfrac{d}{dt}\,\mathcal{F}[m(t)] \le 0$, and equality holds precisely at equilibria satisfying $m = \tanh(\beta(\mathcal{J}[m]+h))$. Therefore, $\mathcal{F}$ is a Lyapunov functional, and solutions converge to the equilibrium set (LaSalle invariance principle).
+
+\subsection{Local (Allen--Cahn) limit as $\gamma\to0$}
+Assume $m$ is smooth at the interaction scale. For normalized, radially symmetric kernels one has the classical expansion
+\begin{equation}\label{eq:conv_expansion}
+ (J_\gamma*m)(x) \;=\; m(x) + c_2\,\gamma^2\,\Delta m(x) + O(\gamma^4),\quad c_2 = \frac{m_2}{2d},\; m_2=\int_{\mathbb{R}^d}|z|^2 J(z)\,dz.
+\end{equation}
+Linearizing $\tanh$ around $m+h$ gives
+\begin{equation}
+ \partial_t m \;\approx\; -m + \tanh\big(\beta(m+h)\big) + \beta\,c_2\,\gamma^2\,\operatorname{sech}^2\!\big(\beta(m+h)\big)\,\Delta m,
+\end{equation}
+an Allen--Cahn type equation with state-dependent diffusion coefficient $\beta\,c_2\,\gamma^2\,\operatorname{sech}^2(\beta(m+h))$.
+
+\subsection{Qualitative implications}
+Because $\widehat{J_\gamma}(k)$ is maximal at $k=0$, the first instability is spatially uniform. Thus, beyond the mean-field threshold (e.g., $\beta>1$ at $h\approx0$), dynamics tends to select homogeneous magnetized states $\pm m^*$ rather than finite-wavenumber patterns; interfaces connecting phases may form, with their width and motion modulated by the nonlocal interaction range.
+
 
 
 

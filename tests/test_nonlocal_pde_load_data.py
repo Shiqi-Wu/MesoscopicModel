@@ -35,6 +35,7 @@ from nonlocal_pde_solver import (
     solve_nonlocal_pde_from_data,
 )
 from plot import load_spins_data
+from utils import compute_susceptibility_series
 
 
 class IsingDataset:
@@ -423,24 +424,27 @@ def compare_solutions(data_path: str):
     else:
         axes[0, 3].axis("off")
 
-    # Plot 8: Phase area fraction (m>0) vs Time (bottom-right)
-    frac_pos_data = [(original_m[orig_idx[i]] > 0.0).mean() for i in range(min_len)]
-    frac_pos_pde = [(nonlocal_traj[pde_idx[i]] > 0.0).mean() for i in range(min_len)]
+    # Plot 8: Susceptibility χ(t) vs Time (bottom-right)
+    beta_val = float(params.beta) if params is not None else 1.0
+    chi_data = compute_susceptibility_series(original_m, beta_val)
+    chi_pde = compute_susceptibility_series(nonlocal_traj, beta_val)
+    # Align lengths for plotting
+    chi_data_al = chi_data[orig_idx]
+    chi_pde_al = chi_pde[pde_idx]
     axes[1, 3].plot(
-        times_aligned, frac_pos_data, color="blue", linewidth=2, label="Data frac(m>0)"
+        times_aligned, chi_data_al, color="blue", linewidth=2, label="Data χ(t)"
     )
     axes[1, 3].plot(
         times_aligned,
-        frac_pos_pde,
+        chi_pde_al,
         color="red",
         linestyle="--",
         linewidth=2,
-        label="PDE frac(m>0)",
+        label="PDE χ(t)",
     )
     axes[1, 3].set_xlabel("Time", fontsize=12)
-    axes[1, 3].set_ylabel("Area fraction (m>0)", fontsize=12)
-    axes[1, 3].set_ylim([0.0, 1.0])
-    axes[1, 3].set_title("Phase Area Fraction vs Time", fontsize=14, fontweight="bold")
+    axes[1, 3].set_ylabel("Susceptibility χ", fontsize=12)
+    axes[1, 3].set_title("Susceptibility vs Time", fontsize=14, fontweight="bold")
     axes[1, 3].legend(fontsize=10)
     axes[1, 3].grid(True, alpha=0.3)
 
