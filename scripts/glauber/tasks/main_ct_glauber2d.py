@@ -31,7 +31,8 @@ def export_npz_and_json_bundle(out_root: Path, stem: str,
                                snaps_block_avg: np.ndarray,
                                Ms: np.ndarray,
                                Es: np.ndarray,
-                               meta: dict, block: int):
+                               meta: dict, block: int,
+                               remote_dir: str = None):
     out_npz = out_root / f"{stem}.npz"
     out_json = out_root / f"{stem}.json"
 
@@ -55,6 +56,10 @@ def export_npz_and_json_bundle(out_root: Path, stem: str,
         json.dump(meta2, f, ensure_ascii=False, indent=2)
     print(f"[save] {out_json}")
 
+    if remote_dir is not None:
+        os.system(f"cp {out_npz} {remote_dir}/")
+        os.system(f"cp {out_json} {remote_dir}/")
+        print(f"[remote copy] to {remote_dir}")
 
 def main():
     parser = argparse.ArgumentParser(description="Continuous-time Glauber simulation (GPU Kac version)")
@@ -71,6 +76,8 @@ def main():
     parser.add_argument("--kernel", type=str, default="nearest")  # nearest / gaussian
     parser.add_argument("--epsilon", type=float, default=0.1)     # for Kac Gaussian
     parser.add_argument("--use_gpu", action="store_true", default=False)
+    parser.add_argument("--method", type=str, default="gillespie")  # gillespie / tau-leaping
+    parser.add_argument("--eps_tau", type=float, default=0.01)      # only for tau-leaping
 
     # Dynamics
     parser.add_argument("--J", type=float, default=1.0)
@@ -85,6 +92,7 @@ def main():
 
     # Output
     parser.add_argument("--outdir", type=str, default="result/spectral_ct_glauber_gpu")
+    parser.add_argument("--remote_dir", type=str, default=None)
 
     args = parser.parse_args()
 
@@ -102,6 +110,14 @@ def main():
                  f"kernel{args.kernel}_epsilon{args.epsilon:g}_seed{args.seed}")
     run_dir = out_root / stem_base
     ensure_dir(run_dir)
+
+    if args.remote_dir is not None:
+        remote_dir = Path(args.remote_dir)
+        remote_run_dir = remote_dir / stem_base
+        ensure_dir(remote_run_dir)
+        print(f"[info] Remote directory specified: {remote_run_dir}")
+    else:
+        remote_run_dir = None
 
     print(f"[info] L={L}, T={T:.4f} (Tc={Tc:.4f}, T/Tc={T/Tc:.3f}), "
           f"ell={args.ell}, sigma={args.sigma}, tau={args.tau}, m0={args.m0}, block={args.block}, "
@@ -131,7 +147,7 @@ def main():
                 t_end=args.t_end, snapshot_dt=args.snapshot_dt,
                 return_snapshots=True
             )
-        elif args.kernel == "gaussian":
+        elif args.kernel == "gaussian" and args.method == "gillespie":
             times, Ms, Es, snaps = sim_kac.simulate_kac(
                 spin_init=spins0,
                 beta=beta, J0=J, h=h,
@@ -139,10 +155,21 @@ def main():
                 t_end=args.t_end, snapshot_dt=args.snapshot_dt,
                 return_snapshots=True
             )
+        elif args.kernel == "gaussian" and args.method == "tau-leaping":
+            times, Ms, Es, snaps = sim_kac.simulate_kac_tauleap(
+                spin_init=spins0,
+                beta=beta, J0=J, h=h,
+                epsilon=args.epsilon,
+                t_end=args.t_end, snapshot_dt=args.snapshot_dt,
+                eps_tau=args.eps_tau,
+                return_snapshots=True
+            )
         else:
             raise ValueError(f"Unknown kernel type: {args.kernel}")
-
+        
+        
         # 块平均
+        print(f"Block-averaging with block={args.block} ...")
         tiles = int(np.ceil(L / args.block))
         snaps_block_avg = np.zeros((len(times), tiles, tiles), dtype=np.float64)
         for k in range(len(times)):
@@ -151,7 +178,8 @@ def main():
                     x0, x1 = i*args.block, min((i+1)*args.block, L)
                     y0, y1 = j*args.block, min((j+1)*args.block, L)
                     snaps_block_avg[k, i, j] = np.mean(snaps[k, x0:x1, y0:y1])
-
+        print("Block-averaging done.")
+        
         meta = dict(
             L=L, J=J, h=h,
             Tc=float(Tc), T=float(args.T),
@@ -166,10 +194,17 @@ def main():
 
         round_run_dir = run_dir / f"round{r}"
         ensure_dir(round_run_dir)
+
+        if remote_run_dir is not None:
+            remote_round_run_dir = remote_run_dir / f"round{r}"
+            ensure_dir(remote_round_run_dir)
+        else:
+            remote_round_run_dir = None
         stem = f"{stem_base}_round{r}"
         export_npz_and_json_bundle(round_run_dir, stem,
                                    times, snaps, snaps_block_avg, Ms, Es,
-                                   meta, args.block)
+                                   meta, args.block,
+                                   remote_dir=remote_round_run_dir)
 
     print(f"[done] All outputs under {run_dir}")
 
