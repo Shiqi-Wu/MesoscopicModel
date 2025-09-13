@@ -18,9 +18,9 @@ def build_kernel_k(M, Lx, Ly, epsilon, kernel_type="gaussian", use_gpu=False):
     K = np.sqrt(KX**2 + KY**2)
 
     if kernel_type == "gaussian":
-        kernel_k = np.exp(-0.5 * (K * epsilon)**2)
+        kernel_k = np.exp(-0.5 * (K * epsilon) ** 2)
     elif kernel_type == "exponential":
-        kernel_k = 1.0 / (1.0 + (K * epsilon)**2)
+        kernel_k = 1.0 / (1.0 + (K * epsilon) ** 2)
     else:
         raise ValueError("Unknown kernel_type")
 
@@ -43,16 +43,20 @@ def conv_spin(spin, kernel_k, use_gpu=False):
 def nn_sum_cpu(spin):
     """Sum of 4 nearest neighbors (CPU)."""
     return (
-        np.roll(spin, 1, axis=0) + np.roll(spin, -1, axis=0) +
-        np.roll(spin, 1, axis=1) + np.roll(spin, -1, axis=1)
+        np.roll(spin, 1, axis=0)
+        + np.roll(spin, -1, axis=0)
+        + np.roll(spin, 1, axis=1)
+        + np.roll(spin, -1, axis=1)
     )
 
 
 def nn_sum_gpu(spin_cp):
     """Sum of 4 nearest neighbors (GPU)."""
     return (
-        cp.roll(spin_cp, 1, axis=0) + cp.roll(spin_cp, -1, axis=0) +
-        cp.roll(spin_cp, 1, axis=1) + cp.roll(spin_cp, -1, axis=1)
+        cp.roll(spin_cp, 1, axis=0)
+        + cp.roll(spin_cp, -1, axis=0)
+        + cp.roll(spin_cp, 1, axis=1)
+        + cp.roll(spin_cp, -1, axis=1)
     )
 
 
@@ -93,12 +97,23 @@ def _gpu_pick_site_by_rates(r_cp, rng=None):
     idx = int(cp.searchsorted(cdf, u2))
     return float(dt), idx
 
-    def simulate_kac_tauleap(self, spin_init, beta, J0=1.0, h=0.0,
-                             epsilon=0.1, kernel_type="gaussian",
-                             t_end=5.0, snapshot_dt=0.1, eps_tau=0.01,
-                             return_mode="full", verbose_every=1000):
+    def simulate_kac_tauleap(
+        self,
+        spin_init,
+        beta,
+        J0=1.0,
+        h=0.0,
+        epsilon=0.1,
+        kernel_type="gaussian",
+        t_end=5.0,
+        snapshot_dt=0.1,
+        eps_tau=0.01,
+        return_mode="full",
+        verbose_every=1000,
+    ):
         """Tau-leaping simulation (Kac or nearest, CPU or GPU)."""
         # ... (code unchanged, just comments removed for brevity)
+
 
 class Glauber2DIsingCT:
     def __init__(self, L, Lx=1.0, Ly=1.0, B=8, use_gpu=False):
@@ -157,13 +172,24 @@ class Glauber2DIsingCT:
             conv_val_cp = cp.fft.ifft2(kernel_k_cp * spin_k).real
             return h + J0 * (conv_val_cp - J00_cp * spin_cp)
 
-    def simulate(self, spin_init, beta, J0=1.0, h=0.0,
-                     epsilon=0.1, kernel_type="gaussian",
-                     t_end=5.0, snapshot_dt=0.1,
-                     return_mode="full", verbose_every=1000):
-        kernel_k = build_kernel_k(self.L, self.Lx, self.Ly, epsilon, kernel_type, use_gpu=self.use_gpu)
+    def simulate(
+        self,
+        spin_init,
+        beta,
+        J0=1.0,
+        h=0.0,
+        epsilon=0.1,
+        kernel_type="gaussian",
+        t_end=5.0,
+        snapshot_dt=0.1,
+        return_mode="full",
+        verbose_every=1000,
+    ):
+        kernel_k = build_kernel_k(
+            self.L, self.Lx, self.Ly, epsilon, kernel_type, use_gpu=self.use_gpu
+        )
 
-        # GPU 
+        # GPU
         if self.use_gpu:
             L = self.L
             spin_cp = cp.asarray(spin_init.astype(np.int8))
@@ -180,8 +206,12 @@ class Glauber2DIsingCT:
             if kernel_type == "nearest":
                 hloc_cp = self._local_field_gpu(spin_cp, J0, h, None, 0.0, kernel_type)
             else:
-                hloc_cp = self._local_field_gpu(spin_cp, J0, h, kernel_k_cp, J00_cp, kernel_type)
-            r_cp = 1.0 / (1.0 + cp.exp(cp.clip(2.0 * beta * hloc_cp * spin_cp, -30, 30)))
+                hloc_cp = self._local_field_gpu(
+                    spin_cp, J0, h, kernel_k_cp, J00_cp, kernel_type
+                )
+            r_cp = 1.0 / (
+                1.0 + cp.exp(cp.clip(2.0 * beta * hloc_cp * spin_cp, -30, 30))
+            )
 
             t, next_snap = 0.0, 0.0
             time_list, Ms_list, Es_list = [0.0], [], []
@@ -191,7 +221,11 @@ class Glauber2DIsingCT:
             if kernel_type == "nearest":
                 Es_list.append(self._calc_energy_nearest(spin_cp, J0, h, use_gpu=True))
             else:
-                Es_list.append(self._calc_energy_fft(spin_cp, J0, h, kernel_k_cp, J00_cp, use_gpu=True))
+                Es_list.append(
+                    self._calc_energy_fft(
+                        spin_cp, J0, h, kernel_k_cp, J00_cp, use_gpu=True
+                    )
+                )
             if return_mode == "full":
                 snap_list.append(spin_cp.get())
             elif return_mode == "coarse":
@@ -207,18 +241,30 @@ class Glauber2DIsingCT:
 
                 # 更新本地场与速率
                 if kernel_type == "nearest":
-                    hloc_cp = self._local_field_gpu(spin_cp, J0, h, None, 0.0, kernel_type)
+                    hloc_cp = self._local_field_gpu(
+                        spin_cp, J0, h, None, 0.0, kernel_type
+                    )
                 else:
-                    hloc_cp = self._local_field_gpu(spin_cp, J0, h, kernel_k_cp, J00_cp, kernel_type)
-                r_cp = 1.0 / (1.0 + cp.exp(cp.clip(2.0 * beta * hloc_cp * spin_cp, -30, 30)))
+                    hloc_cp = self._local_field_gpu(
+                        spin_cp, J0, h, kernel_k_cp, J00_cp, kernel_type
+                    )
+                r_cp = 1.0 / (
+                    1.0 + cp.exp(cp.clip(2.0 * beta * hloc_cp * spin_cp, -30, 30))
+                )
 
                 while t >= next_snap and next_snap <= t_end:
                     time_list.append(next_snap)
                     Ms_list.append(float(spin_cp.mean()))
                     if kernel_type == "nearest":
-                        Es_list.append(self._calc_energy_nearest(spin_cp, J0, h, use_gpu=True))
+                        Es_list.append(
+                            self._calc_energy_nearest(spin_cp, J0, h, use_gpu=True)
+                        )
                     else:
-                        Es_list.append(self._calc_energy_fft(spin_cp, J0, h, kernel_k_cp, J00_cp, use_gpu=True))
+                        Es_list.append(
+                            self._calc_energy_fft(
+                                spin_cp, J0, h, kernel_k_cp, J00_cp, use_gpu=True
+                            )
+                        )
                     if return_mode == "full":
                         snap_list.append(spin_cp.get())
                     elif return_mode == "coarse":
@@ -261,7 +307,9 @@ class Glauber2DIsingCT:
             if kernel_type == "nearest":
                 Es_list.append(self._calc_energy_nearest(spin, J0, h, use_gpu=False))
             else:
-                Es_list.append(self._calc_energy_fft(spin, J0, h, kernel_k, J00, use_gpu=False))
+                Es_list.append(
+                    self._calc_energy_fft(spin, J0, h, kernel_k, J00, use_gpu=False)
+                )
             if return_mode == "full":
                 snap_list.append(spin.copy())
             elif return_mode == "coarse":
@@ -279,9 +327,15 @@ class Glauber2DIsingCT:
                     time_list.append(next_snap)
                     Ms_list.append(spin.mean())
                     if kernel_type == "nearest":
-                        Es_list.append(self._calc_energy_nearest(spin, J0, h, use_gpu=False))
+                        Es_list.append(
+                            self._calc_energy_nearest(spin, J0, h, use_gpu=False)
+                        )
                     else:
-                        Es_list.append(self._calc_energy_fft(spin, J0, h, kernel_k, J00, use_gpu=False))
+                        Es_list.append(
+                            self._calc_energy_fft(
+                                spin, J0, h, kernel_k, J00, use_gpu=False
+                            )
+                        )
                     if return_mode == "full":
                         snap_list.append(spin.copy())
                     elif return_mode == "coarse":
@@ -301,10 +355,20 @@ class Glauber2DIsingCT:
                 snaps = np.stack(snap_list, axis=0)
                 return times, Ms, Es, snaps
 
-    def simulate_tauleap(self, spin_init, beta, J0=1.0, h=0.0,
-                             epsilon=0.1, kernel_type="gaussian",
-                             t_end=5.0, snapshot_dt=0.1, eps_tau=0.01,
-                             return_mode="full", verbose_every=1000):
+    def simulate_tauleap(
+        self,
+        spin_init,
+        beta,
+        J0=1.0,
+        h=0.0,
+        epsilon=0.1,
+        kernel_type="gaussian",
+        t_end=5.0,
+        snapshot_dt=0.1,
+        eps_tau=0.01,
+        return_mode="full",
+        verbose_every=1000,
+    ):
         """Tau-leaping simulation (Kac or nearest, CPU or GPU)."""
 
         L = self.L
@@ -313,7 +377,9 @@ class Glauber2DIsingCT:
         if use_gpu:
             xp = cp
             spin = cp.asarray(spin_init.astype(np.int8))
-            kernel_k = build_kernel_k(L, self.Lx, self.Ly, epsilon, kernel_type, use_gpu=True)
+            kernel_k = build_kernel_k(
+                L, self.Lx, self.Ly, epsilon, kernel_type, use_gpu=True
+            )
             if kernel_type == "nearest":
                 J00 = 0.0
             else:
@@ -323,7 +389,9 @@ class Glauber2DIsingCT:
         else:
             xp = np
             spin = spin_init.copy().astype(np.int8)
-            kernel_k = build_kernel_k(L, self.Lx, self.Ly, epsilon, kernel_type, use_gpu=False)
+            kernel_k = build_kernel_k(
+                L, self.Lx, self.Ly, epsilon, kernel_type, use_gpu=False
+            )
             if kernel_type == "nearest":
                 J00 = 0.0
             else:
@@ -340,7 +408,9 @@ class Glauber2DIsingCT:
             if kernel_type == "nearest":
                 Es_list.append(self._calc_energy_nearest(spin, J0, h, use_gpu=True))
             else:
-                Es_list.append(self._calc_energy_fft(spin, J0, h, kernel_k, J00, use_gpu=True))
+                Es_list.append(
+                    self._calc_energy_fft(spin, J0, h, kernel_k, J00, use_gpu=True)
+                )
             if return_mode == "full":
                 snap_list.append(spin.get())
             elif return_mode == "coarse":
@@ -350,7 +420,9 @@ class Glauber2DIsingCT:
             if kernel_type == "nearest":
                 Es_list.append(self._calc_energy_nearest(spin, J0, h, use_gpu=False))
             else:
-                Es_list.append(self._calc_energy_fft(spin, J0, h, kernel_k, J00, use_gpu=False))
+                Es_list.append(
+                    self._calc_energy_fft(spin, J0, h, kernel_k, J00, use_gpu=False)
+                )
             if return_mode == "full":
                 snap_list.append(spin.copy())
             elif return_mode == "coarse":
@@ -399,9 +471,15 @@ class Glauber2DIsingCT:
                 if use_gpu:
                     Ms_list.append(float(spin.mean()))
                     if kernel_type == "nearest":
-                        Es_list.append(self._calc_energy_nearest(spin, J0, h, use_gpu=True))
+                        Es_list.append(
+                            self._calc_energy_nearest(spin, J0, h, use_gpu=True)
+                        )
                     else:
-                        Es_list.append(self._calc_energy_fft(spin, J0, h, kernel_k, J00, use_gpu=True))
+                        Es_list.append(
+                            self._calc_energy_fft(
+                                spin, J0, h, kernel_k, J00, use_gpu=True
+                            )
+                        )
                     if return_mode == "full":
                         snap_list.append(spin.get())
                     elif return_mode == "coarse":
@@ -409,9 +487,15 @@ class Glauber2DIsingCT:
                 else:
                     Ms_list.append(spin.mean())
                     if kernel_type == "nearest":
-                        Es_list.append(self._calc_energy_nearest(spin, J0, h, use_gpu=False))
+                        Es_list.append(
+                            self._calc_energy_nearest(spin, J0, h, use_gpu=False)
+                        )
                     else:
-                        Es_list.append(self._calc_energy_fft(spin, J0, h, kernel_k, J00, use_gpu=False))
+                        Es_list.append(
+                            self._calc_energy_fft(
+                                spin, J0, h, kernel_k, J00, use_gpu=False
+                            )
+                        )
                     if return_mode == "full":
                         snap_list.append(spin.copy())
                     elif return_mode == "coarse":
@@ -431,3 +515,65 @@ class Glauber2DIsingCT:
         else:
             snaps = np.stack(snap_list, axis=0)
             return times, Ms, Es, snaps
+
+
+# test functions
+def conv_direct(spin, kern):
+    """O(L^4) 直译定义卷积 (for testing small L)."""
+    L = spin.shape[0]
+    out = np.zeros_like(spin, dtype=float)
+    for x0 in range(L):
+        for y0 in range(L):
+            s = 0.0
+            for i in range(L):
+                for j in range(L):
+                    dx = (x0 - i) % L
+                    dy = (y0 - j) % L
+                    s += kern[dx, dy] * spin[i, j]
+            out[x0, y0] = s
+    return out
+
+
+def test_eps_effect():
+    L = 16
+    spin = np.random.choice([-1, 1], size=(L, L))
+    eps1, eps2 = 0.1, 0.3
+
+    k1 = build_kernel_k(L, 1.0, 1.0, eps1, kernel_type="gaussian", use_gpu=False)
+    k2 = build_kernel_k(L, 1.0, 1.0, eps2, kernel_type="gaussian", use_gpu=False)
+
+    conv1 = conv_spin(spin, k1)
+    conv2 = conv_spin(spin, k2)
+    diff = np.linalg.norm(conv1 - conv2)
+    print(f"[TEST] ||conv(eps={eps1}) - conv(eps={eps2})|| = {diff:.3e}")
+
+
+if __name__ == "__main__":
+    L = 8
+    beta = 0.5
+    eps = 0.2
+    spin = np.random.choice([-1, 1], size=(L, L))
+
+    # 构造核（频域）
+    kernel_k = build_kernel_k(L, 1.0, 1.0, eps, kernel_type="gaussian", use_gpu=False)
+    kern_real = np.fft.ifft2(kernel_k).real
+    kern_real /= kern_real.sum()
+    J00 = kern_real[0, 0]
+
+    # ---- 卷积正确性测试 ----
+    conv_fft = conv_spin(spin, kernel_k, use_gpu=False)
+    conv_ref = conv_direct(spin, kern_real)
+    err = np.linalg.norm(conv_fft - conv_ref)
+    print(f"[TEST] ||conv_fft - conv_direct|| = {err:.3e}")
+
+    # ---- 自作用项检查 ----
+    hloc0 = conv_fft - J00 * spin
+    x, y = 3, 4
+    spin2 = spin.copy()
+    spin2[x, y] *= -1
+    conv2 = conv_spin(spin2, kernel_k, use_gpu=False)
+    hloc1 = conv2 - J00 * spin2
+    delta = abs(hloc0[x, y] - hloc1[x, y])
+    print(f"[TEST] |Δ hloc at flipped site| = {delta:.3e}")
+
+    test_eps_effect()

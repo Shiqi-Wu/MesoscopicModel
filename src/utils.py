@@ -3,6 +3,8 @@ import random
 import numpy as np
 import torch
 import torch.nn as nn
+import re
+import os
 
 
 def set_seed_everywhere(seed=42):
@@ -200,3 +202,83 @@ def compute_susceptibility_series(
     var = m2_mean - m_mean**2
     chi = beta * N * var
     return chi
+
+
+def ensure_dir(p: Path):
+    p.mkdir(parents=True, exist_ok=True)
+
+
+def load_all_rounds(data_path: str, n_rounds: int = 20):
+    """
+    Given a reference data_path (e.g. round0),
+    load magnetization and energy from round0..n_rounds-1.
+    Returns (times, mags_all, Es_all).
+    """
+    # Strip off the "_roundX.npz"
+    m = re.match(r"^(.*)_round(\d+)\.npz$", data_path)
+    if not m:
+        raise ValueError(f"data_path format not recognized: {data_path}")
+    prefix = m.group(1)
+
+    mags_all = []
+    Es_all = []
+    times = None
+
+    for r in range(n_rounds):
+        npz_path = f"{prefix}_round{r}.npz"
+        if not os.path.exists(npz_path):
+            print(f"⚠️ Missing {npz_path}")
+            continue
+        data = np.load(npz_path, allow_pickle=True)
+        # Macro field or spins_meso (depending on what you saved)
+        m_fields = data.get("spins_meso", data.get("spins"))
+        if m_fields is None:
+            raise KeyError("No spins_meso or spins in npz file.")
+        if times is None:
+            times = data["times"]
+        mags = [np.mean(mf) for mf in m_fields]
+        mags_all.append(mags)
+        if "Es" in data:
+            Es_all.append(data["Es"])
+
+    mags_all = np.array(mags_all) if mags_all else None
+    Es_all = np.array(Es_all) if Es_all else None
+    return times, mags_all, Es_all
+
+
+def export_npz_and_json_bundle(
+    out_root: Path,
+    stem: str,
+    times: np.ndarray,
+    snaps: np.ndarray = None,
+    snaps_block_avg: np.ndarray = None,
+    Ms: np.ndarray = None,
+    Es: np.ndarray = None,
+    meta: dict = None,
+    block: int = 8,
+    remote_dir: str = None,
+):
+    out_npz = out_root / f"{stem}.npz"
+    out_json = out_root / f"{stem}.json"
+
+    np.savez_compressed(
+        out_npz, times=times, spins=snaps, spins_meso=snaps_block_avg, Ms=Ms, Es=Es
+    )
+    print(f"[save] {out_npz}")
+
+    meta2 = dict(meta)
+    meta2["B"] = int(block)
+    M = int(np.ceil(meta2["L"] / block))
+    meta2["M"] = M
+    if "L" not in meta2 or meta2["L"] is None:
+        meta2["L"] = int(M * block)
+    meta2["data_level"] = "micro"
+
+    with open(out_json, "w", encoding="utf-8") as f:
+        json.dump(meta2, f, ensure_ascii=False, indent=2)
+    print(f"[save] {out_json}")
+
+    if remote_dir is not None:
+        os.system(f"cp {out_npz} {remote_dir}/")
+        os.system(f"cp {out_json} {remote_dir}/")
+        print(f"[remote copy] to {remote_dir}")

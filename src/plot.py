@@ -79,7 +79,6 @@ def plot_animation(times, spins, spins_meso, outdir: Path, interval=200, stride=
         fig.suptitle(f"t = {times[f]:.2f}")
         return im1, im2
 
-    # 每 stride 帧取一帧
     frame_indices = range(0, len(times), stride)
 
     ani = animation.FuncAnimation(
@@ -91,14 +90,13 @@ def plot_animation(times, spins, spins_meso, outdir: Path, interval=200, stride=
     #     ani.save(mp4_path, writer="ffmpeg", dpi=150)
     #     print(f"[save] {mp4_path}")
     # except Exception as e:
-        # print(f"[warn] mp4 save failed ({e}), falling back to GIF")
-        # gif_path = outdir / "animation.gif"
-        # ani.save(gif_path, writer="pillow", dpi=100)
-        # print(f"[save] {gif_path}")
+    # print(f"[warn] mp4 save failed ({e}), falling back to GIF")
+    # gif_path = outdir / "animation.gif"
+    # ani.save(gif_path, writer="pillow", dpi=100)
+    # print(f"[save] {gif_path}")
     gif_path = outdir / "animation.gif"
     ani.save(gif_path, writer="pillow", dpi=100)
     print(f"[save] {gif_path}")
-
 
 
 def visualize_network(
@@ -108,12 +106,16 @@ def visualize_network(
     Visualize both kernel and ForceNet properties
     """
     # Check force network type
-    force_net_type = getattr(network, 'force_net_type', 'MLP')
-    
+    force_net_type = getattr(network, "force_net_type", "MLP")
+
     if force_net_type == "Tanh":
-        return visualize_network_tanh(network, epoch, kernel_size, batch_size, learning_rate, save_dir)
+        return visualize_network_tanh(
+            network, epoch, kernel_size, batch_size, learning_rate, save_dir
+        )
     else:
-        return visualize_network_mlp(network, epoch, kernel_size, batch_size, learning_rate, save_dir)
+        return visualize_network_mlp(
+            network, epoch, kernel_size, batch_size, learning_rate, save_dir
+        )
 
 
 def visualize_network_mlp(
@@ -261,7 +263,9 @@ def visualize_network_tanh(
 
     # 1. Visualize kernel
     with torch.no_grad():
-        kernel_tensor = network.kernel()  # Call forward() to get the actual kernel (1,1,K,K)
+        kernel_tensor = (
+            network.kernel()
+        )  # Call forward() to get the actual kernel (1,1,K,K)
     kernel_weights = kernel_tensor[0, 0].detach().cpu().numpy()  # Extract (K,K) part
     im1 = axes[0, 0].imshow(kernel_weights, cmap="viridis")
     axes[0, 0].set_title(f"Softmax Kernel (Epoch {epoch})")
@@ -276,20 +280,25 @@ def visualize_network_tanh(
         D = network.force_net.D.item()
 
     # Plot parameter values
-    param_names = ['A', 'B', 'C', 'D']
+    param_names = ["A", "B", "C", "D"]
     param_values = [A, B, C, D]
-    colors = ['red', 'blue', 'green', 'orange']
-    
+    colors = ["red", "blue", "green", "orange"]
+
     bars = axes[0, 1].bar(param_names, param_values, color=colors, alpha=0.7)
     axes[0, 1].set_ylabel("Parameter Value")
     axes[0, 1].set_title("ForceTanhNet Parameters")
     axes[0, 1].grid(True, alpha=0.3)
-    
+
     # Add value labels on bars
     for bar, value in zip(bars, param_values):
         height = bar.get_height()
-        axes[0, 1].text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                       f'{value:.3f}', ha='center', va='bottom')
+        axes[0, 1].text(
+            bar.get_x() + bar.get_width() / 2.0,
+            height + 0.01,
+            f"{value:.3f}",
+            ha="center",
+            va="bottom",
+        )
 
     # 3. ForceTanhNet function visualization: F(I, m, h) = -Am + tanh(BI + Cm + Dh)
     # Create test input ranges
@@ -298,20 +307,21 @@ def visualize_network_tanh(
     h_range = torch.linspace(-1, 1, 50)  # external field range
 
     # Fix h=0, vary I and m
-    I_mesh, m_mesh = torch.meshgrid(I_range, m_range, indexing='ij')
+    I_mesh, m_mesh = torch.meshgrid(I_range, m_range, indexing="ij")
     h_fixed = torch.zeros_like(I_mesh)
-    
+
     with torch.no_grad():
         # Reshape for batch processing
         I_flat = I_mesh.flatten().unsqueeze(1)  # (2500, 1)
         m_flat = m_mesh.flatten().unsqueeze(1)  # (2500, 1)
         h_flat = h_fixed.flatten().unsqueeze(1)  # (2500, 1)
-        
+
         output_flat = network.force_net(I_flat, m_flat, h_flat)  # (2500, 1)
         output_mesh = output_flat.reshape(I_mesh.shape)
 
-    im2 = axes[1, 0].contourf(I_mesh.numpy(), m_mesh.numpy(), output_mesh.numpy(), 
-                              levels=20, cmap='RdBu_r')
+    im2 = axes[1, 0].contourf(
+        I_mesh.numpy(), m_mesh.numpy(), output_mesh.numpy(), levels=20, cmap="RdBu_r"
+    )
     axes[1, 0].set_xlabel("I (kernel output)")
     axes[1, 0].set_ylabel("m (magnetization)")
     axes[1, 0].set_title("ForceTanhNet: F(I, m, h=0)")
@@ -322,43 +332,48 @@ def visualize_network_tanh(
     test_I = torch.tensor([[1.0]], requires_grad=True)
     test_m = torch.tensor([[0.5]], requires_grad=True)
     test_h = torch.tensor([[0.0]], requires_grad=True)
-    
+
     with torch.no_grad():
         # Get current parameter values
         A_val = network.force_net.A.item()
         B_val = network.force_net.B.item()
         C_val = network.force_net.C.item()
         D_val = network.force_net.D.item()
-        
+
         # Compute analytical gradients
         # F = -Am + tanh(BI + Cm + Dh)
         # ∂F/∂A = -m
         # ∂F/∂B = I * sech²(BI + Cm + Dh)
         # ∂F/∂C = m * sech²(BI + Cm + Dh)
         # ∂F/∂D = h * sech²(BI + Cm + Dh)
-        
+
         tanh_arg = B_val * test_I + C_val * test_m + D_val * test_h
         sech_sq = 1.0 / torch.cosh(tanh_arg) ** 2
-        
+
         grad_A = -test_m.item()
         grad_B = (test_I * sech_sq).item()
         grad_C = (test_m * sech_sq).item()
         grad_D = (test_h * sech_sq).item()
 
     # Plot parameter sensitivities
-    sens_names = ['∂F/∂A', '∂F/∂B', '∂F/∂C', '∂F/∂D']
+    sens_names = ["∂F/∂A", "∂F/∂B", "∂F/∂C", "∂F/∂D"]
     sens_values = [abs(grad_A), abs(grad_B), abs(grad_C), abs(grad_D)]
-    
+
     bars = axes[1, 1].bar(sens_names, sens_values, color=colors, alpha=0.7)
     axes[1, 1].set_ylabel("|Gradient|")
     axes[1, 1].set_title("Parameter Sensitivity (I=1, m=0.5, h=0)")
     axes[1, 1].grid(True, alpha=0.3)
-    
+
     # Add value labels
     for bar, value in zip(bars, sens_values):
         height = bar.get_height()
-        axes[1, 1].text(bar.get_x() + bar.get_width()/2., height + 0.001,
-                       f'{value:.3f}', ha='center', va='bottom')
+        axes[1, 1].text(
+            bar.get_x() + bar.get_width() / 2.0,
+            height + 0.001,
+            f"{value:.3f}",
+            ha="center",
+            va="bottom",
+        )
 
     plt.tight_layout()
 

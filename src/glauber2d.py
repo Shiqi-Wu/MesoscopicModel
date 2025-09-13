@@ -3,33 +3,37 @@ import numpy as np
 import math
 from kac_kernel import build_kernel_fft, conv_spin
 
+
 @numba.njit(cache=True)
 def _build_nn(L):
-    up = np.empty(L*L, np.int64)
-    dn = np.empty(L*L, np.int64)
-    lf = np.empty(L*L, np.int64)
-    rt = np.empty(L*L, np.int64)
+    up = np.empty(L * L, np.int64)
+    dn = np.empty(L * L, np.int64)
+    lf = np.empty(L * L, np.int64)
+    rt = np.empty(L * L, np.int64)
     for x in range(L):
-        xp = x+1 if x+1 < L else 0
-        xm = x-1 if x-1 >= 0 else L-1
+        xp = x + 1 if x + 1 < L else 0
+        xm = x - 1 if x - 1 >= 0 else L - 1
         for y in range(L):
-            yp = y+1 if y+1 < L else 0
-            ym = y-1 if y-1 >= 0 else L-1
-            k  = x*L + y
-            up[k] = xp*L + y
-            dn[k] = xm*L + y
-            rt[k] = x*L + yp
-            lf[k] = x*L + ym
+            yp = y + 1 if y + 1 < L else 0
+            ym = y - 1 if y - 1 >= 0 else L - 1
+            k = x * L + y
+            up[k] = xp * L + y
+            dn[k] = xm * L + y
+            rt[k] = x * L + yp
+            lf[k] = x * L + ym
     return up, dn, lf, rt
+
 
 @numba.njit(cache=True)
 def _local_field(k, spin, up, dn, lf, rt, J, h):
-    return J*(spin[up[k]] + spin[dn[k]] + spin[lf[k]] + spin[rt[k]]) + h
+    return J * (spin[up[k]] + spin[dn[k]] + spin[lf[k]] + spin[rt[k]]) + h
+
 
 @numba.njit(cache=True)
 def _rate(k, spin, up, dn, lf, rt, beta, J, h):
     Hi = _local_field(k, spin, up, dn, lf, rt, J, h)
     return np.exp(-beta * Hi * spin[k]) / (2.0 * np.cosh(beta * Hi))
+
 
 @numba.njit(cache=True)
 def _pick_site_by_rates(r, R, rng):
@@ -41,11 +45,12 @@ def _pick_site_by_rates(r, R, rng):
             return i
     return r.size - 1
 
+
 @numba.njit(cache=True)
-def _glauber_ct_gillespie(spin, L, beta, J, h,
-                          t_end, snapshot_dt,
-                          times_out, snaps_out):
-    N = L*L
+def _glauber_ct_gillespie(
+    spin, L, beta, J, h, t_end, snapshot_dt, times_out, snaps_out
+):
+    N = L * L
     up, dn, lf, rt = _build_nn(L)
 
     r = np.empty(N, np.float64)
@@ -96,11 +101,12 @@ def _glauber_ct_gillespie(spin, L, beta, J, h,
         if step % 10000 == 0:
             print("simulate progress:", t, step, n_snaps)
 
-    if n_snaps < times_out.size and (n_snaps == 0 or times_out[n_snaps-1] < t_end):
+    if n_snaps < times_out.size and (n_snaps == 0 or times_out[n_snaps - 1] < t_end):
         times_out[n_snaps] = min(t, t_end)
         snaps_out[n_snaps, :, :] = spin.reshape(L, L)
         n_snaps += 1
     return n_snaps
+
 
 # # Kac Kernel
 # def build_kac_csr_with_aff(L, R_phys, kernel="gaussian", sigma=0.1, include_self=False):
@@ -174,6 +180,7 @@ def _glauber_ct_gillespie(spin, L, beta, J, h,
 #     E += -h * np.sum(spin)
 #     return E / N
 
+
 # main class
 class Glauber2DIsingCT:
     def __init__(self, size):
@@ -181,9 +188,13 @@ class Glauber2DIsingCT:
         self.area = self.L * self.L
 
     def _calc_energy(self, spin, J=1.0, h=0.0):
-        R = (np.roll(spin, 1, 0) + np.roll(spin, -1, 0) +
-             np.roll(spin, 1, 1) + np.roll(spin, -1, 1))
-        return (-J*np.sum(R*spin)/2.0 - h*np.sum(spin)) / self.area
+        R = (
+            np.roll(spin, 1, 0)
+            + np.roll(spin, -1, 0)
+            + np.roll(spin, 1, 1)
+            + np.roll(spin, -1, 1)
+        )
+        return (-J * np.sum(R * spin) / 2.0 - h * np.sum(spin)) / self.area
 
     def _calc_energy_kac_fft(self, spin, J0=1.0, h=0.0, kernel_fft=None):
         """基于 FFT 的能量计算"""
@@ -202,18 +213,28 @@ class Glauber2DIsingCT:
             Tc = J
         else:
             raise ValueError("Unknown model type")
-        return T, Tc, T/Tc
+        return T, Tc, T / Tc
 
-    def simulate(self, spin_init, beta, J=1.0, h=0.0,
-                 t_end=500.0, snapshot_dt=0.01, return_snapshots=True):
+    def simulate(
+        self,
+        spin_init,
+        beta,
+        J=1.0,
+        h=0.0,
+        t_end=500.0,
+        snapshot_dt=0.01,
+        return_snapshots=True,
+    ):
         spin = spin_init.reshape(-1).copy()
-        max_snaps = int(np.ceil(t_end/snapshot_dt)) + 2
+        max_snaps = int(np.ceil(t_end / snapshot_dt)) + 2
         times = np.zeros(max_snaps, dtype=np.float64)
         snaps = np.zeros((max_snaps, self.L, self.L), dtype=np.int8)
-        print(f"[simulate] start continuous-time Glauber NN, L={self.L}, t_end={t_end}, dt={snapshot_dt}")
-        n_snaps = _glauber_ct_gillespie(spin, self.L, beta, J, h,
-                                        t_end, snapshot_dt,
-                                        times, snaps)
+        print(
+            f"[simulate] start continuous-time Glauber NN, L={self.L}, t_end={t_end}, dt={snapshot_dt}"
+        )
+        n_snaps = _glauber_ct_gillespie(
+            spin, self.L, beta, J, h, t_end, snapshot_dt, times, snaps
+        )
         times = times[:n_snaps]
         snaps = snaps[:n_snaps]
 
@@ -225,14 +246,26 @@ class Glauber2DIsingCT:
         else:
             return times, Ms, Es
 
-    def simulate_kac(self, spin_init, beta, J0=1.0, h=0.0,
-                     R=0.2, kernel="gaussian", sigma=0.1,
-                     t_end=500.0, snapshot_dt=0.01, return_snapshots=True):
+    def simulate_kac(
+        self,
+        spin_init,
+        beta,
+        J0=1.0,
+        h=0.0,
+        R=0.2,
+        kernel="gaussian",
+        sigma=0.1,
+        t_end=500.0,
+        snapshot_dt=0.01,
+        return_snapshots=True,
+    ):
         spin = spin_init.copy().astype(np.int8)
         L = self.L
         N = L * L
 
-        print(f"[simulate_kac_local] start CT Glauber Kac, L={L}, R={R}, kernel={kernel}, sigma={sigma}, t_end={t_end}")
+        print(
+            f"[simulate_kac_local] start CT Glauber Kac, L={L}, R={R}, kernel={kernel}, sigma={sigma}, t_end={t_end}"
+        )
 
         kernel_fft, neighbor_offsets = build_kernel_fft(L, R, kernel, sigma)
 
@@ -242,7 +275,7 @@ class Glauber2DIsingCT:
         Rtot = r.sum()
         print(f"[simulate_kac_local] initial total rate Rtot={Rtot:.3e}")
 
-        max_snaps = int(np.ceil(t_end/snapshot_dt)) + 2
+        max_snaps = int(np.ceil(t_end / snapshot_dt)) + 2
         times = np.zeros(max_snaps, np.float64)
         snaps = np.zeros((max_snaps, L, L), np.int8)
 
@@ -280,18 +313,22 @@ class Glauber2DIsingCT:
 
             old_s = spin[x, y]
             spin[x, y] = -old_s
-            delta = spin[x, y] - old_s   # = -2 * old_s
+            delta = spin[x, y] - old_s  # = -2 * old_s
 
             for dx, dy, w in neighbor_offsets:
                 xx = (x + dx) % L
                 yy = (y + dy) % L
                 hloc[xx, yy] += J0 * w * delta
                 old_r = r[xx, yy]
-                r[xx, yy] = np.exp(-beta * hloc[xx, yy] * spin[xx, yy]) / (2.0*np.cosh(beta*hloc[xx, yy]))
+                r[xx, yy] = np.exp(-beta * hloc[xx, yy] * spin[xx, yy]) / (
+                    2.0 * np.cosh(beta * hloc[xx, yy])
+                )
                 Rtot += r[xx, yy] - old_r
 
             old_r = r[x, y]
-            r[x, y] = np.exp(-beta * hloc[x, y] * spin[x, y]) / (2.0*np.cosh(beta*hloc[x, y]))
+            r[x, y] = np.exp(-beta * hloc[x, y] * spin[x, y]) / (
+                2.0 * np.cosh(beta * hloc[x, y])
+            )
             Rtot += r[x, y] - old_r
 
             step += 1
@@ -302,11 +339,17 @@ class Glauber2DIsingCT:
         snaps = snaps[:n_snaps]
 
         Ms = np.array([self._calc_magnetization(snaps[k]) for k in range(n_snaps)])
-        Es = np.array([self._calc_energy_kac_fft(snaps[k], J0, h, kernel_fft)
-                       for k in range(n_snaps)])
+        Es = np.array(
+            [
+                self._calc_energy_kac_fft(snaps[k], J0, h, kernel_fft)
+                for k in range(n_snaps)
+            ]
+        )
 
         print(f"[simulate_kac_local] done, collected {n_snaps} snapshots")
-        print(f"[simulate_kac_local] final magnetization={Ms[-1]:.4f}, energy={Es[-1]:.4f}")
+        print(
+            f"[simulate_kac_local] final magnetization={Ms[-1]:.4f}, energy={Es[-1]:.4f}"
+        )
 
         if return_snapshots:
             return times, Ms, Es, snaps

@@ -21,23 +21,27 @@ from nonlocal_pde_solver import (
     create_nonlocal_parameter_provider,
     solve_nonlocal_allen_cahn,
 )
-from utils import compute_susceptibility_series
-
+from utils import (
+    compute_susceptibility_series,
+    load_all_rounds,
+)
 
 def main():
     print("🧪 Comparing Local vs Nonlocal PDE with Loaded Data")
     print("=" * 60)
 
     # Data path
-    h = 1
-    T = 1
-    epsilon = 0.03125
-    data_path = (
-        f"data/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_T{T}_J1_h{h}_tend5.0_dt0.01_"
-        f"block8_kernelgaussian_epsilon{epsilon}_seed0/round0/"
-        f"ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_T{T}_J1_h{h}_tend5.0_dt0.01_"
-        f"block8_kernelgaussian_epsilon{epsilon}_seed0_round0.npz"
-    )
+    # h = 1
+    # T = 1
+    # epsilon = 0.03125
+    # data_path = (
+    #     f"data/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_T{T}_J1_h{h}_tend5.0_dt0.01_"
+    #     f"block8_kernelgaussian_epsilon{epsilon}_seed0/round0/"
+    #     f"ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_T{T}_J1_h{h}_tend5.0_dt0.01_"
+    #     f"block8_kernelgaussian_epsilon{epsilon}_seed0_round0.npz"
+    # )
+
+    data_path = "data/ct_glauber/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_T1_J1_h0_tend20.0_dt0.01_block8_kernelgaussian_epsilon0.03125_seed0/round0/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_T1_J1_h0_tend20.0_dt0.01_block8_kernelgaussian_epsilon0.03125_seed0_round0.npz"
 
     if not os.path.exists(data_path):
         print(f"❌ Data file not found: {data_path}")
@@ -72,7 +76,16 @@ def main():
         return
 
     # Magnetizations
-    original_mag = [np.mean(mf) for mf in original_m]
+    # original_mag = [np.mean(mf) for mf in original_m]
+    times, mags_all, Es_all = load_all_rounds(data_path, n_rounds=20)
+
+    if mags_all is not None:
+        original_mag_mean = mags_all.mean(axis=0)
+        original_mag_std = mags_all.std(axis=0)
+    else:
+        print("⚠️ No magnetization data found.")
+        return
+        
     local_mag = [np.mean(f) for f in phi_local]
     nonlocal_mag = [np.mean(f) for f in phi_nonlocal]
 
@@ -183,7 +196,9 @@ def main():
     axes[0, 2].set_ylabel("Mean absolute difference")
     axes[0, 2].legend()
     axes[0, 2].grid(True, alpha=0.3)
-    axes[0, 3].plot(original_times, original_mag, "blue", label="Original")
+    axes[0, 3].errorbar(original_times, mag_mean, yerr=mag_std,
+                    fmt="o-", color="blue", alpha=0.7,
+                    label="Data (20 rounds mean ± std)")
     axes[0, 3].plot(times_local, local_mag, "green", label="Local PDE")
     axes[0, 3].plot(
         times_nonlocal, nonlocal_mag, "red", linestyle="--", label="Nonlocal PDE"

@@ -1,24 +1,24 @@
 #!/bin/bash
 
 # Initialization parameters
-ELL=32.0
+ELL=128.0
 SIGMA=1.2
 TAU=1.0
 M0=0.1
 SEED=0
 
 # Simulation parameters
-SIZE=1024
+SIZE=4096
 J=1.0
-H=1.0
-T=4.0
+H=0.0
+T=1.0
 T_END=20.0
 SNAPSHOT_DT=0.01
 ROUNDS=20
-BLOCK=8
+BLOCK=32
 KERNEL="gaussian"  # "nearest" or "gaussian"
-# EPISILON=0.015625  # only used if KERNEL is "gaussian"
-EPISILON=0.03125  # only used if KERNEL is "gaussian"
+EPISILON=0.015625  # only used if KERNEL is "gaussian"
+# EPISILON=0.03125  # only used if KERNEL is "gaussian"
 METHOD="tau-leaping"  # "gillespie" or "tau-leaping"
 EPS_TAU=0.01  # only used if METHOD is "tau-leaping"
 

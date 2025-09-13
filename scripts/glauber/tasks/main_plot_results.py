@@ -4,13 +4,17 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import os
 import sys
+
 sys.path.append("src")
 from plot import plot_Ms_Es, plot_animation
 from pathlib import Path
 import argparse
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Plot Ising Glauber results from npz/json")
+    parser = argparse.ArgumentParser(
+        description="Plot Ising Glauber results from npz/json"
+    )
     parser.add_argument("folder", type=str, help="Folder containing results npz/json")
     args = parser.parse_args()
 
@@ -32,6 +36,7 @@ def main():
 
     # 2) 动图 (micro vs meso)
     plot_animation(times, spins, spins_meso, folder)
+
 
 if __name__ == "__main__":
     main()
