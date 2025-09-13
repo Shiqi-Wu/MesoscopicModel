@@ -1,21 +1,21 @@
 #!/bin/bash
 
 # Initialization parameters
-ELL=64.0
+ELL=32.0
 SIGMA=1.2
 TAU=1.0
 M0=0.1
 SEED=0
 
 # Simulation parameters
-SIZE=2048
+SIZE=1024
 J=1.0
-H=0.0
-T=1.0
+H=1.0
+T=4.0
 T_END=20.0
 SNAPSHOT_DT=0.01
 ROUNDS=20
-BLOCK=16
+BLOCK=8
 KERNEL="gaussian"  # "nearest" or "gaussian"
 # EPISILON=0.015625  # only used if KERNEL is "gaussian"
 EPISILON=0.03125  # only used if KERNEL is "gaussian"
