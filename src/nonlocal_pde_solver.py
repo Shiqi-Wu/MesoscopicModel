@@ -171,13 +171,13 @@ class TheoryNonlocalProvider(NonlocalParameterProvider):
                 self.meta = json.load(f)
 
             self.times = data["times"]
-            self.spins = data["spins"]  # (T, L, L)
+            # self.spins = data["spins"]  # (T, L, L)
             self.spins_meso = data["spins_meso"]  # (T, M, M)
 
-            if self.spins is None:
-                raise ValueError(f"No spins data in {self.data_path}")
-            if self.frame_idx >= self.spins.shape[0]:
-                raise IndexError(f"frame_idx {self.frame_idx} >= {self.spins.shape[0]}")
+            if self.spins_meso is None:
+                raise ValueError(f"No spins_meso data in {self.data_path}")
+            if self.frame_idx >= self.spins_meso.shape[0]:
+                raise IndexError(f"frame_idx {self.frame_idx} >= {self.spins_meso.shape[0]}")
 
             self.B = int(self.meta["block"])
             self.M = int(self.meta["M"])
@@ -274,7 +274,7 @@ class TheoryNonlocalProvider(NonlocalParameterProvider):
 
     def get_reference_data(self) -> Dict[str, Any]:
         return {
-            "micro_spins": self.spins,
+            # "micro_spins": self.spins,
             "macro_field": self.spins_meso,
             "times": self.times,
             "meta": self.meta,

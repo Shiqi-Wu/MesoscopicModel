@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 import re
 import os
+import json
+from pathlib import Path
 
 
 def set_seed_everywhere(seed=42):
@@ -177,6 +179,66 @@ def print_metadata_info(
 
         print(f"\n💾 Metadata information saved to: {filepath}")
 
+def build_kernel_fft(M: int, eps: float) -> np.ndarray:
+    """Build Gaussian interaction kernel in Fourier space."""
+    dx = 1.0 / M
+    grid = np.arange(M, dtype=np.float32)
+    rx = np.minimum(grid, M - grid) * dx
+    ry = rx
+    RX, RY = np.meshgrid(rx, ry, indexing="ij")
+    R = np.sqrt(RX * RX + RY * RY)
+    if eps > 0:
+        Jr = np.exp(-(R * R) / (2.0 * eps * eps)) / (2.0 * np.pi * eps * eps)
+    else:
+        Jr = np.zeros((M, M), dtype=np.float32)
+        Jr[0, 0] = 1.0
+    Jr /= Jr.sum()
+    Jr_rolled = np.fft.ifftshift(Jr)
+    return np.fft.fft2(Jr_rolled)
+
+
+def conv_J(m: np.ndarray, kernel_k: np.ndarray) -> np.ndarray:
+    """Convolution with Gaussian J kernel in Fourier space."""
+    return np.fft.ifft2(np.fft.fft2(m) * kernel_k).real
+
+
+def free_energy_series(
+    traj: np.ndarray,
+    times: np.ndarray,
+    beta: float,
+    h_field: float,
+    J0: float,
+    kernel_k: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Compute free energy F(t) for a coarse-grained trajectory.
+
+    Args:
+        traj: array (T, M, M) with magnetization fields
+        times: array (T,) with time points
+        beta: inverse temperature
+        h_field: external field
+        J0: interaction strength
+        kernel_k: Fourier-space kernel from build_kernel_fft
+
+    Returns:
+        times, F(t): arrays of length T
+    """
+    Tn, M, _ = traj.shape
+    dxdy = (1.0 / M) * (1.0 / M)
+    F = np.empty(Tn, dtype=np.float64)
+    for i in range(Tn):
+        mfield = traj[i]
+        m_clip = np.clip(mfield, -1.0 + 1e-6, 1.0 - 1e-6)
+        p = 0.5 * (1.0 + m_clip)
+        q = 0.5 * (1.0 - m_clip)
+        ent = (p * np.log(p) + q * np.log(q)) / beta
+        Jm = conv_J(mfield, kernel_k)
+        E_int = -0.5 * J0 * mfield * Jm
+        E_h = -h_field * mfield
+        density = ent + E_int + E_h
+        F[i] = np.sum(density) * dxdy
+    return times[:Tn], F
 
 def compute_susceptibility_series(
     field_trajectory: np.ndarray, beta: float
@@ -208,43 +270,53 @@ def ensure_dir(p: Path):
     p.mkdir(parents=True, exist_ok=True)
 
 
+
 def load_all_rounds(data_path: str, n_rounds: int = 20):
     """
-    Given a reference data_path (e.g. round0),
-    load magnetization and energy from round0..n_rounds-1.
-    Returns (times, mags_all, Es_all).
+    Given the path to round0 (both dir and filename),
+    load magnetization and energy across all rounds.
     """
-    # Strip off the "_roundX.npz"
-    m = re.match(r"^(.*)_round(\d+)\.npz$", data_path)
+    # Find the pattern with _roundX.npz
+    m = re.match(r"^(.*_seed.*)/round\d+/(.*_seed.*)_round\d+\.npz$", data_path)
     if not m:
         raise ValueError(f"data_path format not recognized: {data_path}")
-    prefix = m.group(1)
+    dir_prefix = m.group(1)   # up to "..._seed0"
+    file_prefix = m.group(2)  # same, without "_roundX.npz"
 
-    mags_all = []
-    Es_all = []
+    mags_all, Es_all, Fs_all, Chis_all = [], [], [], []
     times = None
 
     for r in range(n_rounds):
-        npz_path = f"{prefix}_round{r}.npz"
+        npz_path = f"{dir_prefix}/round{r}/{file_prefix}_round{r}.npz"
         if not os.path.exists(npz_path):
             print(f"⚠️ Missing {npz_path}")
             continue
+
         data = np.load(npz_path, allow_pickle=True)
-        # Macro field or spins_meso (depending on what you saved)
         m_fields = data.get("spins_meso", data.get("spins"))
         if m_fields is None:
-            raise KeyError("No spins_meso or spins in npz file.")
+            raise KeyError("No spins_meso or spins in file.")
+
         if times is None:
             times = data["times"]
+
         mags = [np.mean(mf) for mf in m_fields]
         mags_all.append(mags)
+
         if "Es" in data:
             Es_all.append(data["Es"])
+        
+        if "free_energy" in data:
+            Fs_all.append(data["free_energy"])
+        
+        if "chi" in data:
+            Chis_all.append(data["chi"])
 
     mags_all = np.array(mags_all) if mags_all else None
-    Es_all = np.array(Es_all) if Es_all else None
-    return times, mags_all, Es_all
-
+    Es_all   = np.array(Es_all)   if Es_all   else None
+    Fs_all   = np.array(Fs_all)   if Fs_all   else None
+    Chis_all = np.array(Chis_all) if Chis_all else None
+    return times, mags_all, Es_all, Fs_all, Chis_all
 
 def export_npz_and_json_bundle(
     out_root: Path,

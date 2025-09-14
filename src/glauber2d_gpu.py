@@ -230,8 +230,10 @@ class Glauber2DIsingCT:
                 snap_list.append(spin_cp.get())
             elif return_mode == "coarse":
                 snap_list.append(self._coarse_grain(spin_cp).get())
+                
             next_snap += snapshot_dt
 
+            print(f"[INFO] snap shape: {snap_list[-1].shape}")
             steps = 0
             while t < t_end:
                 dt, idx = _gpu_pick_site_by_rates(r_cp)
@@ -375,6 +377,8 @@ class Glauber2DIsingCT:
         use_gpu = self.use_gpu
 
         if use_gpu:
+            print("[INFO] Using GPU for simulation.")
+            print("[INFO] Seed is set as", cp.random.rand())
             xp = cp
             spin = cp.asarray(spin_init.astype(np.int8))
             kernel_k = build_kernel_k(
@@ -429,6 +433,7 @@ class Glauber2DIsingCT:
                 snap_list.append(self._coarse_grain(spin).copy())
         next_snap += snapshot_dt
 
+        print(f"[INFO] snap shape: {snap_list[-1].shape}")
         steps = 0
         while t < t_end:
             # rates

@@ -24,24 +24,35 @@ from nonlocal_pde_solver import (
 from utils import (
     compute_susceptibility_series,
     load_all_rounds,
+    build_kernel_fft,
+    free_energy_series,
 )
 
 def main():
     print("🧪 Comparing Local vs Nonlocal PDE with Loaded Data")
     print("=" * 60)
-
+    base_dir = "data/ct_glauber"
     # Data path
-    # h = 1
-    # T = 1
+    h = 0
+    T = 1
+    # epsilon = 0.0001
     # epsilon = 0.03125
-    # data_path = (
-    #     f"data/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_T{T}_J1_h{h}_tend5.0_dt0.01_"
-    #     f"block8_kernelgaussian_epsilon{epsilon}_seed0/round0/"
-    #     f"ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_T{T}_J1_h{h}_tend5.0_dt0.01_"
-    #     f"block8_kernelgaussian_epsilon{epsilon}_seed0_round0.npz"
-    # )
+    epsilon = 0.015625
+    L_scale = 1
+    ell = 32 * L_scale
+    L = 1024 * L_scale
+    block = 8 * L_scale
+    t_end = 20.0
+    data_path = os.path.join(
+        base_dir,
+        f"ct_glauber_L{L}_ell{ell}_sigma1.2_tau1_m00.1_T{T}_J1_h{h}_"
+        f"tend{t_end}_dt0.01_block{block}_kernelgaussian_epsilon{epsilon}_seed0",
+        f"round0",
+        f"ct_glauber_L{L}_ell{ell}_sigma1.2_tau1_m00.1_T{T}_J1_h{h}_"
+        f"tend{t_end}_dt0.01_block{block}_kernelgaussian_epsilon{epsilon}_seed0_round0.npz"
+    )
+    scale_std = 20
 
-    data_path = "data/ct_glauber/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_T1_J1_h0_tend20.0_dt0.01_block8_kernelgaussian_epsilon0.03125_seed0/round0/ct_glauber_L1024_ell32_sigma1.2_tau1_m00.1_T1_J1_h0_tend20.0_dt0.01_block8_kernelgaussian_epsilon0.03125_seed0_round0.npz"
 
     if not os.path.exists(data_path):
         print(f"❌ Data file not found: {data_path}")
@@ -77,14 +88,16 @@ def main():
 
     # Magnetizations
     # original_mag = [np.mean(mf) for mf in original_m]
-    times, mags_all, Es_all = load_all_rounds(data_path, n_rounds=20)
+    times, mags_all, Es_all, Fs_all, Chis_all = load_all_rounds(data_path, n_rounds=20)
 
     if mags_all is not None:
-        original_mag_mean = mags_all.mean(axis=0)
+        original_mag = mags_all.mean(axis=0)
         original_mag_std = mags_all.std(axis=0)
+        print(f"Std of original_mag: {original_mag_std}")
     else:
-        print("⚠️ No magnetization data found.")
-        return
+        original_mag = [np.mean(mf) for mf in original_m]
+        original_mag_std = None
+        print("⚠️ No magnetization data found; only single run available.")
         
     local_mag = [np.mean(f) for f in phi_local]
     nonlocal_mag = [np.mean(f) for f in phi_nonlocal]
@@ -115,53 +128,21 @@ def main():
     h_field = float(local_params.h_field)
     eps_val = float(local_params.source_info.get("mapped", {}).get("eps", epsilon))
     M = original_m.shape[-1]
+    kernel_k = build_kernel_fft(M, eps_val)
 
-    def _build_kernel_k(M: int, eps: float) -> np.ndarray:
-        dx = 1.0 / M
-        grid = np.arange(M, dtype=np.float32)
-        rx = np.minimum(grid, M - grid) * dx
-        ry = rx
-        RX, RY = np.meshgrid(rx, ry, indexing="ij")
-        R = np.sqrt(RX * RX + RY * RY)
-        if eps > 0:
-            Jr = np.exp(-(R * R) / (2.0 * eps * eps)) / (2.0 * np.pi * eps * eps)
-        else:
-            Jr = np.zeros((M, M), dtype=np.float32)
-            Jr[0, 0] = 1.0
-        s = Jr.sum()
-        if s > 0:
-            Jr = Jr / s
-        Jr_rolled = np.fft.ifftshift(Jr)
-        return np.fft.fft2(Jr_rolled)
-
-    kernel_k = _build_kernel_k(M, eps_val)
-
-    def _conv_J(m: np.ndarray) -> np.ndarray:
-        return np.fft.ifft2(np.fft.fft2(m) * kernel_k).real
-
-    def _free_energy_series(
-        traj: np.ndarray, times_arr: np.ndarray, J0: float
-    ) -> tuple[np.ndarray, np.ndarray]:
-        Tn = traj.shape[0]
-        F = np.empty(Tn, dtype=np.float64)
-        dxdy = (1.0 / M) * (1.0 / M)
-        for i in range(Tn):
-            mfield = traj[i]
-            m_clip = np.clip(mfield, -1.0 + 1e-6, 1.0 - 1e-6)
-            p = 0.5 * (1.0 + m_clip)
-            q = 0.5 * (1.0 - m_clip)
-            ent = (p * np.log(p) + q * np.log(q)) / beta_val
-            Jm = _conv_J(mfield)
-            E_int = -0.5 * J0 * mfield * Jm
-            E_h = -h_field * mfield
-            density = ent + E_int + E_h
-            F[i] = np.sum(density) * dxdy
-        return times_arr[:Tn], F
-
-    tF_data, F_data = _free_energy_series(original_m, original_times, J0=1.0)
-    tF_loc, F_loc = _free_energy_series(phi_local, times_local, J0=1.0)
+    if Fs_all is not None:
+        tF_data = times
+        F_data = Fs_all.mean(axis=0)
+        F_data_std = Fs_all.std(axis=0)
+        print(f"Std of F_data: {F_data_std}")
+    else:
+        tF_data, F_data = free_energy_series(original_m, original_times, beta=beta_val, h_field=h_field, J0=1.0, kernel_k=kernel_k)
+        F_data_std = None
+        print("⚠️ No free energy data found; only single run available.")
+    
+    tF_loc, F_loc = free_energy_series(phi_local, times_local, beta=beta_val, h_field=h_field, J0=1.0, kernel_k=kernel_k)
     J0_non = float(nonlocal_params.interaction_strength)
-    tF_non, F_non = _free_energy_series(phi_nonlocal, times_nonlocal, J0=J0_non)
+    tF_non, F_non = free_energy_series(phi_nonlocal, times_nonlocal, beta=beta_val, h_field=h_field, J0=J0_non, kernel_k=kernel_k)
     # Align FE series
     T_align_F = min(len(tF_data), len(tF_loc), len(tF_non))
     tF = tF_data[:T_align_F]
@@ -170,7 +151,14 @@ def main():
     F_non = F_non[:T_align_F]
 
     # Susceptibility χ(t)
-    chi_data = compute_susceptibility_series(original_m, beta_val)
+    if Chis_all is not None:
+        chi_data = Chis_all.mean(axis=0)
+        chi_data_std = Chis_all.std(axis=0)
+        print(f"Std of chi_data: {chi_data_std}")
+    else:
+        chi_data = compute_susceptibility_series(original_m, beta_val)
+        chi_data_std = None
+        print("⚠️ No susceptibility data found; only single run available.")
     chi_loc = compute_susceptibility_series(phi_local, beta_val)
     chi_non = compute_susceptibility_series(phi_nonlocal, beta_val)
     chi_data_al = chi_data[orig_idx]
@@ -196,9 +184,11 @@ def main():
     axes[0, 2].set_ylabel("Mean absolute difference")
     axes[0, 2].legend()
     axes[0, 2].grid(True, alpha=0.3)
-    axes[0, 3].errorbar(original_times, mag_mean, yerr=mag_std,
-                    fmt="o-", color="blue", alpha=0.7,
-                    label="Data (20 rounds mean ± std)")
+    if original_mag_std is not None:
+        axes[0, 3].plot(original_times, original_mag, color="blue", label="Data (mean)")
+        axes[0, 3].fill_between(original_times, original_mag - scale_std * original_mag_std, original_mag + scale_std * original_mag_std, color="blue", alpha=0.2, label=f"±{scale_std}x std")
+    else:
+        axes[0, 3].plot(original_times, original_mag, color="blue", label="Data")
     axes[0, 3].plot(times_local, local_mag, "green", label="Local PDE")
     axes[0, 3].plot(
         times_nonlocal, nonlocal_mag, "red", linestyle="--", label="Nonlocal PDE"
@@ -220,8 +210,11 @@ def main():
     im5 = axes[1, 2].imshow(diff_loc, cmap="hot")
     axes[1, 2].set_title("|Local − Data| (final)")
     plt.colorbar(im5, ax=axes[1, 2])
+
     # Free Energy (Data, Local, Nonlocal)
     axes[1, 3].plot(tF, F_data, color="blue", label="Data F[m]")
+    if F_data_std is not None:
+        axes[1, 3].fill_between(tF_data, F_data - scale_std * F_data_std, F_data + scale_std * F_data_std, color="blue", alpha=0.2, label=f"±{scale_std}x std")
     axes[1, 3].plot(tF, F_loc, color="green", label="Local F[m]")
     axes[1, 3].plot(tF, F_non, color="red", linestyle="--", label="Nonlocal F[m]")
     axes[1, 3].set_title("Free Energy vs Time")
@@ -243,6 +236,8 @@ def main():
     plt.colorbar(im8, ax=axes[2, 2])
     # Susceptibility (Data, Local, Nonlocal)
     axes[2, 3].plot(times_aligned, chi_data_al, color="blue", label="Data χ(t)")
+    if chi_data_std is not None:
+        axes[2, 3].fill_between(times_aligned, chi_data_al - scale_std * chi_data_std, chi_data_al + scale_std * chi_data_std, color="blue", alpha=0.2, label=f"±{scale_std}x std")
     axes[2, 3].plot(times_aligned, chi_loc_al, color="green", label="Local χ(t)")
     axes[2, 3].plot(
         times_aligned, chi_non_al, color="red", linestyle="--", label="Nonlocal χ(t)"
@@ -268,7 +263,7 @@ def main():
     )
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     os.makedirs("results", exist_ok=True)
-    out = f"results/compare_local_nonlocal_h{h_val:g}_T{T_val:g}_eps{eps_title:g}.png"
+    out = f"results/compare_local_nonlocal_L{L:g}_h{h_val:g}_T{T_val:g}_eps{eps_title:g}.png"
     plt.savefig(out, dpi=150, bbox_inches="tight")
     print(f"✅ Comparison plot saved to: {out}")
 

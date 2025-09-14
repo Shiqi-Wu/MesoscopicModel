@@ -38,11 +38,11 @@
 # Group Meeting
 
 ## 2025.09.10
-1. accelerate the continuous time simulation for Glauber dynamics.
-2. check with more trials for each param setting, also larger L.
-3. since the convergence rate depends on h, T, the convergence time varies. thus, we need more simulation time.
-4. add second order statistics evolution curve.
-5. test with simple local Allen-Cahn Equation, check with different size of $\gamma$.
+1. accelerate the continuous time simulation for Glauber dynamics. ☑️
+2. check with more trials for each param setting, also larger L. ☑️
+3. since the convergence rate depends on h, T, the convergence time varies. thus, we need more simulation time. ☑️
+4. add second order statistics evolution curve. ☑️
+5. test with simple local Allen-Cahn Equation, check with different size of $\gamma$. ☑️
 6. we may need assumptions for the MLP force network to be unique.
 7. start with the grountruth initialization of J, to see the minimum loss.
 8. not sure about the time thing in the data and nn training, to check.

@@ -9,6 +9,7 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 from numba import config
+import cupy as cp
 
 config.NUMBA_NUM_THREADS = 1
 
@@ -120,6 +121,10 @@ def main():
 
     for r in range(args.rounds):
         print(f"[round {r}] starting...")
+        seed_r = args.seed + r * 10
+        np.random.seed(seed_r)
+        if args.use_gpu:
+            cp.random.seed(seed_r)
 
         # Map CLI options into the new unified APIs
         if args.method == "gillespie":
