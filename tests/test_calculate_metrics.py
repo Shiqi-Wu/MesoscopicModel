@@ -134,8 +134,8 @@ if __name__ == "__main__":
     base_dir = "data/ct_glauber"
     remote_dir = "/mnt/nfs/homes/shiqi_w/MesoscopicModel/data/shared/ct_glauber"
     # Data path
-    h = 0
-    T = 1
+    h = 1
+    T = 4
     # epsilon = 0.0001
     epsilon = 0.03125
     # epsilon = 0.015625

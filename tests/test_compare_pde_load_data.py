@@ -34,12 +34,12 @@ def main():
     print("=" * 60)
     base_dir = "data/ct_glauber"
     # Data path
-    h = 0
+    h = 1
     T = 1
     # epsilon = 0.0001
     # epsilon = 0.03125
     epsilon = 0.015625
-    L_scale = 1
+    L_scale = 2
     ell = 32 * L_scale
     L = 1024 * L_scale
     block = 8 * L_scale
