@@ -179,6 +179,7 @@ def print_metadata_info(
 
         print(f"\n💾 Metadata information saved to: {filepath}")
 
+
 def build_kernel_fft(M: int, eps: float) -> np.ndarray:
     """Build Gaussian interaction kernel in Fourier space."""
     dx = 1.0 / M
@@ -240,6 +241,7 @@ def free_energy_series(
         F[i] = np.sum(density) * dxdy
     return times[:Tn], F
 
+
 def compute_susceptibility_series(
     field_trajectory: np.ndarray, beta: float
 ) -> np.ndarray:
@@ -270,7 +272,6 @@ def ensure_dir(p: Path):
     p.mkdir(parents=True, exist_ok=True)
 
 
-
 def load_all_rounds(data_path: str, n_rounds: int = 20):
     """
     Given the path to round0 (both dir and filename),
@@ -280,7 +281,7 @@ def load_all_rounds(data_path: str, n_rounds: int = 20):
     m = re.match(r"^(.*_seed.*)/round\d+/(.*_seed.*)_round\d+\.npz$", data_path)
     if not m:
         raise ValueError(f"data_path format not recognized: {data_path}")
-    dir_prefix = m.group(1)   # up to "..._seed0"
+    dir_prefix = m.group(1)  # up to "..._seed0"
     file_prefix = m.group(2)  # same, without "_roundX.npz"
 
     mags_all, Es_all, Fs_all, Chis_all = [], [], [], []
@@ -305,18 +306,19 @@ def load_all_rounds(data_path: str, n_rounds: int = 20):
 
         if "Es" in data:
             Es_all.append(data["Es"])
-        
+
         if "free_energy" in data:
             Fs_all.append(data["free_energy"])
-        
+
         if "chi" in data:
             Chis_all.append(data["chi"])
 
     mags_all = np.array(mags_all) if mags_all else None
-    Es_all   = np.array(Es_all)   if Es_all   else None
-    Fs_all   = np.array(Fs_all)   if Fs_all   else None
+    Es_all = np.array(Es_all) if Es_all else None
+    Fs_all = np.array(Fs_all) if Fs_all else None
     Chis_all = np.array(Chis_all) if Chis_all else None
     return times, mags_all, Es_all, Fs_all, Chis_all
+
 
 def export_npz_and_json_bundle(
     out_root: Path,

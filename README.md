@@ -44,6 +44,6 @@
 4. add second order statistics evolution curve. ☑️
 5. test with simple local Allen-Cahn Equation, check with different size of $\gamma$. ☑️
 6. we may need assumptions for the MLP force network to be unique.
-7. start with the grountruth initialization of J, to see the minimum loss.
+7. start with the ground truth initialization of J, to see the minimum loss.
 8. not sure about the time thing in the data and nn training, to check.
-9. landau enegry as Lyapunov function? at least it's a local func when temperature is high.
+9. landau energy as Lyapunov function? at least it's a local func when temperature is high.
