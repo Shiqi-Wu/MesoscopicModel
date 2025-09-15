@@ -40,6 +40,10 @@ class LocalPDEParams:
     u: float
     beta: float
     h_field: float
+    # Interaction strength (from data/meta; used by tanh-local RHS)
+    J0: float = 1.0
+    # RHS mode: "poly" (default cubic AC) or "tanh_local" (tanh local-limit)
+    rhs_mode: str = "poly"
 
     # Grid/domain
     M: int = 128
@@ -102,6 +106,8 @@ class ManualLocalProvider(LocalParameterProvider):
             beta=self.beta,
             h_field=self.h_field,
             M=self.M,
+            J0=float(self.extra.get("J0", 1.0)),
+            rhs_mode=str(self.extra.get("rhs_mode", "poly")),
             source="manual",
             source_info={"description": "Manual local PDE params"},
             **self.extra,
@@ -149,6 +155,7 @@ class TheoryLocalProvider(LocalParameterProvider):
         T = float(self.meta["T"])  # absolute temperature
         beta = 1.0 / T
         h = float(self.meta["h"]) if "h" in self.meta else 0.0
+        J0 = float(self.meta.get("J", 1.0))
 
         # Use epsilon (interaction range) from filename/meta when available
         eps = None
@@ -165,14 +172,23 @@ class TheoryLocalProvider(LocalParameterProvider):
                 # Fallback: block/L as microscopic spacing (rough scale)
                 eps = self.B / self.L
 
-        d = 2  # using 2D data
-        # For isotropic Gaussian: m2 = d * eps^2  ⇒ κ = β (m2/(2d)) eps^2 = (β/2) eps^2
-        # Direct formula:
-        kappa = 0.5 * beta * (eps**2)
-        r = 1.0 - beta
-        u = (beta**3) / 3.0
+        # Local limit of tanh-Glauber–Kac (keep up to cubic in m):
+        # ∂t m ≈ κ Δ m + (β J0 − 1) m − (β J0)^3 m^3 / 3 + β h
+        # with κ = β J0 · (ε^2 / 2) for a Gaussian kernel in 2D.
+        kappa = 0.5 * beta * J0 * (eps**2)
+        r = beta * J0 - 1.0
+        # Store a positive u and use a stabilizing minus sign in RHS
+        u = (beta * J0) ** 3 / 3.0
 
-        return {"beta": beta, "h": h, "kappa": kappa, "r": r, "u": u, "eps": eps}
+        return {
+            "beta": beta,
+            "h": h,
+            "J0": J0,
+            "kappa": kappa,
+            "r": r,
+            "u": u,
+            "eps": eps,
+        }
 
     def get_params(self) -> LocalPDEParams:
         mapped = self._map_params_from_meta()
@@ -186,6 +202,8 @@ class TheoryLocalProvider(LocalParameterProvider):
             beta=mapped["beta"],
             h_field=mapped["h"],
             M=self.M,
+            J0=mapped["J0"],
+            rhs_mode=str(self.extra.get("rhs_mode", "poly")),
             dt=snapshot_dt,
             steps=steps,
             record_every=1,
@@ -261,14 +279,27 @@ def solve_local_pde(
     k += 1
 
     if show_progress:
-        print(
-            f"Local solver: dt={dt:.3e}, kappa={params.kappa:.3e}, r={params.r:.3e}, u={params.u:.3e}"
-        )
+        if getattr(params, "rhs_mode", "poly") == "tanh_local":
+            print(
+                f"Local solver (tanh_local): dt={dt:.3e}, kappa={params.kappa:.3e}, J0={params.J0:.3e}"
+            )
+        else:
+            print(
+                f"Local solver (poly): dt={dt:.3e}, kappa={params.kappa:.3e}, r={params.r:.3e}, u={params.u:.3e}"
+            )
 
     def rhs(s: Array) -> Array:
         lap = _laplacian_fft(s, Lx, Ly)
-        reaction = params.r * s + params.u * (s**3) + params.beta * params.h_field
-        return params.kappa * lap + reaction
+        mode = getattr(params, "rhs_mode", "poly").lower()
+        if mode == "tanh_local":
+            # tanh local-limit: ∂t m = -m + tanh( β(J0 m + h) + κ Δm )
+            return -s + np.tanh(
+                params.beta * (params.J0 * s + params.h_field) + params.kappa * lap
+            )
+        else:
+            # Polynomial AC: ∂t m = κ Δm + r m − u m^3 + β h
+            reaction = params.r * s - params.u * (s**3) + params.beta * params.h_field
+            return params.kappa * lap + reaction
 
     start = time.time()
     for step in range(params.steps):
