@@ -39,43 +39,68 @@ class IsingDataset(Dataset):
         """Load all .npz files and extract t, x, m, dm"""
 
         try:
-            data = np.load(self.file_path)
+            data = np.load(self.file_path, allow_pickle=True)
             meta_data = json.load(open(self.file_path.replace(".npz", ".json")))
-            print(meta_data.keys())
-            print(data.keys())
-            print(data["spins"].shape)
-            print(data["times"].shape)
 
-            # Extract data arrays
+            # Extract time
             t = data["times"]
-            x = data["spins"]
 
-            # m is coarse-grained magnetization based on spins, since we have M, B and informations in meta_data
-            m = x.reshape(
-                t.shape[0],
-                meta_data["M"],
-                meta_data["B"],
-                meta_data["M"],
-                meta_data["B"],
-            ).mean(axis=(2, 4))
-            # dmdt is dm/dt, 使用np.gradient计算时间方向的有限差分
-            # axis=0表示沿着时间维度计算差分，返回中心差分格式的导数近似
-            # 使用snapshot_dt作为时间步长，或者从t数组计算
-            dt = meta_data.get(
-                "snapshot_dt", t[1] - t[0]
-            )  # 优先使用metadata中的snapshot_dt
-            dmdt = np.gradient(m, dt, axis=0)  # 使用正确的时间步长
+            # Prefer coarse data if available, otherwise coarse-grain spins
+            m_fields = data.get("spins_meso", None)
+            x = data.get("spins", None)
+
+            # Print basic availability for debugging
+            print(f"keys: {list(data.keys())}")
+            if isinstance(x, np.ndarray):
+                try:
+                    print(f"spins shape: {x.shape}")
+                except Exception:
+                    pass
+            if isinstance(m_fields, np.ndarray):
+                print(f"spins_meso shape: {m_fields.shape}")
+            print(f"times shape: {t.shape}")
+
+            if m_fields is None:
+                if x is None or x.size == 0:
+                    raise KeyError("No spins_meso or valid spins in file.")
+                # Coarse-grain spins to (T, M, M)
+                Tn = t.shape[0]
+                M = int(meta_data["M"])  # coarse grid size
+                B = int(meta_data["B"])  # block size
+                # Expect micro spins as (T, L, L) or flattenable
+                if x.ndim == 3:
+                    L = x.shape[1]
+                    assert L == int(
+                        meta_data["L"]
+                    ), "L mismatch between data and metadata"
+                    m_fields = x.reshape(Tn, M, B, M, B).mean(axis=(2, 4))
+                else:
+                    # Try to infer L from metadata and reshape
+                    L = int(meta_data["L"])
+                    x = x.reshape(Tn, L, L)
+                    m_fields = x.reshape(Tn, M, B, M, B).mean(axis=(2, 4))
+
+            # Compute dmdt over time with proper dt
+            dt = meta_data.get("snapshot_dt", (t[1] - t[0]))
+            dmdt = np.gradient(m_fields, dt, axis=0)
 
             # Validate data exists
-            if any(arr is None for arr in [t, x, m, dmdt]):
+            if any(arr is None for arr in [t, m_fields, dmdt]):
                 print(f"Warning: Missing required data in {self.file_path}")
-                available_keys = list(data.keys())
-                print(f"Available keys: {available_keys}")
+                print(f"Available keys: {list(data.keys())}")
 
             # Convert to tensors
             t_tensor = torch.from_numpy(t).float()
-            x_tensor = torch.from_numpy(x).float()
-            m_tensor = torch.from_numpy(m).float()
+            # x is optional; store coarse field as m
+            m_tensor = torch.from_numpy(m_fields).float()
+            # if raw spins exist and are dense, keep a small placeholder to avoid memory blow-up
+            if isinstance(x, np.ndarray) and x.ndim >= 1 and x.size > 0:
+                try:
+                    x_tensor = torch.from_numpy(x).float()
+                except Exception:
+                    x_tensor = torch.empty(0)
+            else:
+                x_tensor = torch.empty(0)
             dmdt_tensor = torch.from_numpy(dmdt).float()
 
             # Store data info
@@ -90,7 +115,8 @@ class IsingDataset(Dataset):
 
             print(f"Loaded {os.path.basename(self.file_path)}")
             print(f"  t shape: {t_tensor.shape}")
-            print(f"  x shape: {x_tensor.shape}")
+            if x_tensor.numel() > 0:
+                print(f"  x shape: {x_tensor.shape}")
             print(f"  m shape: {m_tensor.shape}")
             print(f"  dmdt shape: {dmdt_tensor.shape}")
 
@@ -118,6 +144,116 @@ class IsingDataset(Dataset):
         return data["t"], data["x"], data["m"], data["dmdt"]
 
 
+class MultiRoundIsingDataset(Dataset):
+    """
+    Load multiple rounds into a single dataset and expose stacked arrays:
+    m_all: (R, T, H, W), dmdt_all: (R, T, H, W), times: (T,)
+
+    Args:
+        round0_file_path: path to a round0 .npz file; used to infer other rounds
+        n_rounds: number of rounds to try to load
+        max_time_points: if provided, truncate time dimension to first N points
+    """
+
+    def __init__(
+        self,
+        round0_file_path: str,
+        n_rounds: int = 20,
+        max_time_points: int | None = None,
+    ) -> None:
+        super().__init__()
+        import re
+
+        self.round0_file_path = round0_file_path
+        self.n_rounds = int(n_rounds)
+        self.max_time_points = (
+            int(max_time_points) if max_time_points is not None else None
+        )
+
+        m = re.match(
+            r"^(.*_seed.*)/round\d+/(.*_seed.*)_round\d+\.npz$", round0_file_path
+        )
+        if not m:
+            raise ValueError(
+                f"round0_file_path format not recognized: {round0_file_path}"
+            )
+        dir_prefix = m.group(1)
+        file_prefix = m.group(2)
+
+        m_list: list[np.ndarray] = []
+        dmdt_list: list[np.ndarray] = []
+        times_ref: np.ndarray | None = None
+        H = W = None
+        loaded_round_indices: list[int] = []
+
+        for r in range(self.n_rounds):
+            npz_path = f"{dir_prefix}/round{r}/{file_prefix}_round{r}.npz"
+            if not os.path.exists(npz_path):
+                continue
+
+            data = np.load(npz_path, allow_pickle=True)
+            meta_path = npz_path.replace(".npz", ".json")
+            meta = json.load(open(meta_path)) if os.path.exists(meta_path) else {}
+
+            # Prefer spins_meso
+            m_fields = data.get("spins_meso", None)
+            if m_fields is None:
+                x = data.get("spins", None)
+                if x is None or not isinstance(x, np.ndarray) or x.size == 0:
+                    print(f"⚠️ Missing field in {npz_path}; skipping round {r}")
+                    continue
+                Tn = x.shape[0]
+                M = int(meta.get("M"))
+                B = int(meta.get("B"))
+                L = int(meta.get("L"))
+                x = x.reshape(Tn, L, L)
+                m_fields = x.reshape(Tn, M, B, M, B).mean(axis=(2, 4))
+
+            times = data["times"]
+            if (
+                self.max_time_points is not None
+                and times.shape[0] > self.max_time_points
+            ):
+                t_sel = self.max_time_points
+                m_fields = m_fields[:t_sel]
+                times = times[:t_sel]
+
+            dt = meta.get("snapshot_dt", (times[1] - times[0]))
+            dmdt_fields = np.gradient(m_fields, dt, axis=0)
+
+            if times_ref is None:
+                times_ref = times
+                H, W = int(m_fields.shape[1]), int(m_fields.shape[2])
+            m_list.append(m_fields)
+            dmdt_list.append(dmdt_fields)
+            loaded_round_indices.append(r)
+
+        if not m_list:
+            raise FileNotFoundError(f"No rounds loaded from {round0_file_path}")
+
+        # Stack to (R, T, H, W)
+        self.times = torch.from_numpy(times_ref).float()
+        self.m_all = torch.from_numpy(np.stack(m_list, axis=0)).float()
+        self.dmdt_all = torch.from_numpy(np.stack(dmdt_list, axis=0)).float()
+        self.round_indices = loaded_round_indices
+        self.R, self.T, self.H, self.W = self.m_all.shape
+
+    def __len__(self) -> int:
+        return self.R
+
+    def __getitem__(self, idx: int) -> dict:
+        r = int(idx) % self.R
+        return {
+            "times": self.times,  # (T,)
+            "m": self.m_all[r],  # (T, H, W)
+            "dmdt": self.dmdt_all[r],  # (T, H, W)
+            "H": self.H,
+            "W": self.W,
+            "T": self.T,
+            "round_index": self.round_indices[r],
+        }
+
+
 class NonlocalPDENetwork(nn.Module):
     """
     Network that uses GlobalKernelPointEvalPeriodic with SoftmaxKernel
@@ -131,6 +267,8 @@ class NonlocalPDENetwork(nn.Module):
         activation: nn.Module = nn.Tanh(),
         use_bias: bool = True,
         force_net_type: str = "MLP",
+        T: float = 1.0,
+        h: float = 0.0,
     ):
         """
         Args:
@@ -164,7 +302,10 @@ class NonlocalPDENetwork(nn.Module):
         elif force_net_type == "Tanh":
             # Use ForceTanhNet with parameterization F(I, m, h) = -Am + tanh(BI + Cm + Dh)
             # Input: I (kernel output), m (local magnetization), h (external field)
-            self.force_net = ForceTanhNet()
+            self.force_net = ForceTanhNet(
+                T=T,
+                h=h,
+            )
         else:
             raise ValueError(
                 f"Unknown force_net_type: {force_net_type}. Must be 'MLP' or 'Tanh'"
@@ -213,9 +354,7 @@ class NonlocalPDENetwork(nn.Module):
             dm_dt = self.force_net(features)  # (B, 1)
         elif self.force_net_type == "Tanh":
             # For ForceTanhNet: F(I, m, h) = -Am + tanh(BI + Cm + Dh)
-            # I = kernel_output, m = m_local, h = 0 (no external field for now)
-            h_external = torch.zeros_like(m_local)  # (B, 1) - external field (set to 0)
-            dm_dt = self.force_net(kernel_output, m_local, h_external)  # (B, 1)
+            dm_dt = self.force_net(kernel_output, m_local)  # (B, 1)
         else:
             raise ValueError(f"Unknown force_net_type: {self.force_net_type}")
 
@@ -349,6 +488,72 @@ def prepare_training_data(
     return DataLoader(dataset, batch_size=1, shuffle=True, collate_fn=collate_fn)
 
 
+def prepare_training_data_multi(
+    dataset: MultiRoundIsingDataset,
+    train_batch_size: int = 128,
+    use_integer_coords: bool = True,
+) -> DataLoader:
+    """
+    Prepare DataLoader for multi-round dataset.
+
+    Sampling strategy per batch (size = train_batch_size):
+      - sample random round indices r_i in [0, R)
+      - sample random time indices t_i in [0, T)
+      - sample coordinates per i, extract m and dmdt at (r_i, t_i, coord_i)
+      - also return the full fields at those times for network forward
+    """
+
+    def collate_fn(_batch):
+        # Use underlying stacked tensors
+        m_all = dataset.m_all  # (R, T, H, W)
+        dmdt_all = dataset.dmdt_all
+        R, T, H, W = dataset.R, dataset.T, dataset.H, dataset.W
+
+        coords = sample_random_coords(H, W, train_batch_size, use_integer_coords)
+        round_indices = torch.randint(0, R, (train_batch_size,))
+        time_indices = torch.randint(0, T, (train_batch_size,))
+
+        m_values = []
+        dmdt_values = []
+        m_fields = []
+        dmdt_fields = []
+
+        for i in range(train_batch_size):
+            r_i = round_indices[i].item()
+            t_i = time_indices[i].item()
+            coord = coords[i]
+
+            m_t = m_all[r_i, t_i]
+            dmdt_t = dmdt_all[r_i, t_i]
+
+            ci = coord[1].long().clamp(0, H - 1)
+            cj = coord[0].long().clamp(0, W - 1)
+            m_val = m_t[ci, cj]
+            dmdt_val = dmdt_t[ci, cj]
+
+            m_values.append(m_val)
+            dmdt_values.append(dmdt_val)
+            m_fields.append(m_t)
+            dmdt_fields.append(dmdt_t)
+
+        batch_dict = {
+            "m_values": torch.stack(m_values).unsqueeze(1),
+            "dmdt_values": torch.stack(dmdt_values).unsqueeze(1),
+            "coords": coords,
+            "time_indices": time_indices.unsqueeze(1),
+            "round_indices": round_indices.unsqueeze(1),
+            "m_fields": torch.stack(m_fields),
+            "dmdt_fields": torch.stack(dmdt_fields),
+            "H": H,
+            "W": W,
+            "T": T,
+            "R": R,
+        }
+        return batch_dict
+
+    return DataLoader(dataset, batch_size=1, shuffle=True, collate_fn=collate_fn)
+
+
 if __name__ == "__main__":
     # Example usage
     torch.manual_seed(42)
@@ -404,8 +609,9 @@ if __name__ == "__main__":
     network = NonlocalPDENetwork(
         kernel_size=KERNEL_SIZE,
         hidden_sizes=[64, 64, 64],
-        activation=nn.Tanh(),
         force_net_type=FORCE_NET_TYPE,
+        T=T,
+        h=h,
     )
 
     optimizer = torch.optim.Adam(network.parameters(), lr=LEARNING_RATE)

@@ -101,6 +101,8 @@ class ForceTanhNet(nn.Module):
 
     def __init__(
         self,
+        T: float = 1.0,
+        h: float = 0.0,
         A_init: float = 1.0,
         B_init: float = 1.0,
         C_init: float = 1.0,
@@ -113,12 +115,12 @@ class ForceTanhNet(nn.Module):
         self.B = nn.Parameter(torch.tensor(float(B_init)))
         self.C = nn.Parameter(torch.tensor(float(C_init)))
         self.D = nn.Parameter(torch.tensor(float(D_init)))
+        self.beta = 1.0 / T
+        self.h = h
 
-    def forward(
-        self, I: torch.Tensor, m: torch.Tensor, h: torch.Tensor
-    ) -> torch.Tensor:
+    def forward(self, I: torch.Tensor, m: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass: F(I, m, h) = -Am + tanh(BI + Cm + Dh)
+        Forward pass: F(I, m, h) = -Am + tanh(BI + Cm + Dh) = -m + tanh(beta * (I + h)) = -m + tanh(beta * (J_gamma * m + h))
 
         Args:
             I: 2D field tensor of shape (batch_size, 1) - scalar value of 2D field
@@ -130,14 +132,15 @@ class ForceTanhNet(nn.Module):
         """
         # All inputs are (batch_size, 1)
         BI = self.B * I  # (batch_size, 1)
-        Cm = self.C * m * 0  # (batch_size, 1)
-        Dh = self.D * h  # (batch_size, 1)
+        # Cm = self.C * m  # (batch_size, 1)
+        Dh = self.D * self.h  # (batch_size, 1)
 
         # Compute tanh argument: BI + Cm + Dh
-        tanh_arg = BI + Cm + Dh  # (batch_size, 1)
+        tanh_arg = BI + Dh  # (batch_size, 1)
+        # TODO: We remove Cm here; how to implement a kernel on constant with output=0?
         Am = self.A * m  # (batch_size, 1)
 
-        return -Am + torch.tanh(tanh_arg)  # (batch_size, 1)
+        return -Am + torch.tanh(self.beta * tanh_arg)  # (batch_size, 1)
 
 
 # ----------------------------
@@ -148,36 +151,15 @@ class ForceTanhNet(nn.Module):
 class SoftmaxKernel(nn.Module):
     """
     完全可学习的 KxK 核（通过 softmax 约束：非负，和为1）
-    - 初始化为高斯形状（通过设定 logits = -r^2/(2*sigma^2)，softmax 后为高斯核）
     返回形状 (1,1,K,K)
     """
 
-    def __init__(
-        self,
-        kernel_size: int = 15,
-        sigma_init: float | None = None,
-        init_mode: str = "uniform",  # "gaussian" or "uniform"
-    ):
+    def __init__(self, kernel_size: int = 15):
         super().__init__()
         assert kernel_size % 2 == 1, "kernel_size 必须为奇数"
         self.K = kernel_size
-
-        if init_mode.lower() == "uniform":
-            # 均匀起点（softmax 后≈1/K^2）
-            logits = torch.zeros(self.K, self.K)
-        else:
-            # 高斯型 logits 初始化：softmax(logits) ∝ exp(logits) = 高斯
-            k = (self.K - 1) // 2
-            xs, ys = torch.meshgrid(
-                torch.arange(-k, k + 1, dtype=torch.float32),
-                torch.arange(-k, k + 1, dtype=torch.float32),
-                indexing="ij",
-            )
-            sigma = float(self.K) / 4.0 if sigma_init is None else float(sigma_init)
-            logits = -((xs**2 + ys**2) / (2.0 * sigma * sigma))  # (K,K)
-
-        # 注意：这是可学习的 logits，训练中将被更新
-        self.kernel_logits = nn.Parameter(logits)
+        init = torch.zeros(self.K, self.K)  # 均匀起点（softmax后≈1/K^2）
+        self.kernel_logits = nn.Parameter(init)
 
     def forward(self, device=None, dtype=None) -> torch.Tensor:
         k = torch.softmax(self.kernel_logits.view(-1), dim=0).view(1, 1, self.K, self.K)
