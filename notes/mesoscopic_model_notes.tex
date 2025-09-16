@@ -236,6 +236,7 @@ This allows many events to be processed in parallel.
 
 \begin{algorithm}[h]
 \caption{$\tau$-leaping for Glauber dynamics}
+\label{alg:tau-leaping}
 \begin{algorithmic}[1]
 \State Initialize spins $s$, time $t=0$
 \While{$t < T_{\text{end}}$}
@@ -267,7 +268,7 @@ These findings confirm that the $\tau$-leaping method is a valid approximation f
     \begin{tabular}{ll}
         \hline
         \hline
-        Method & Simulation Time of 20 Trails \\
+        Method & Simulation Time (20 Trails) \\
         \hline
         Gillespie & $786.51$s \\
         $\tau$-leaping & $10.79$s \\
@@ -301,30 +302,100 @@ where the convolution operator is defined by
 Equation~\eqref{eq:nonlocal} is the mesoscopic limit of the Glauber--Kac dynamics: 
 the microscopic randomness averages out, and the macroscopic magnetization evolves deterministically according to a nonlocal reaction term given by the Kac potential.
 
-\subsection{From the Nonlocal to the Local PDE}
-Assume $m$ is smooth on the scale of $\gamma$, we can perform a Taylor expansion of the convolution term in \cref{eq:convolution}:
+\subsection{From the Nonlocal to the Local PDE}\paragraph{Step 1: Convolution expansion.}
+Assume the rescaled kernel $J_\gamma(x) = \gamma^{-d} J(x/\gamma)$ with $\int_{\mathbb{R}^d} J(z)\,dz = 1$, $J$ even, and finite second moment 
 \begin{equation}
-    (J_\gamma * m)(\mathbf{x}) = m(\mathbf{x}) + \frac{\gamma^2}{2}\Delta m(\mathbf{x}) + O(\gamma^4).
+m_2 = \int_{\mathbb{R}^d} |z|^2 J(z)\,dz.
 \end{equation}
 
-Also, we can expand $\tanh$ in \cref{eq:nonlocal} around $m(\mathbf{x}) + h$:
+Then
 \begin{equation}
-    \tanh(\beta u) = \beta u - \frac{(\beta u)^3}{3} + O(u^5).
+    (J_\gamma * m)(x) = \int_{\mathbb{R}^d} J(z)\, m(x+\gamma z)\,dz.
+\end{equation}
+Expanding $m(x+\gamma z)$ in Taylor series:
+\begin{equation}
+m(x+\gamma z) = m(x) + \gamma\, z\cdot \nabla m(x) 
++ \frac{\gamma^2}{2}\, z^\top \nabla^2 m(x)\, z + O(\gamma^3).
 \end{equation}
 
-Substituting these expansions into \cref{eq:nonlocal} and neglecting higher-order terms, we obtain the local reaction-diffusion PDE:
-\begin{equation}\label{eq:local}
-    \partial_t m(t,\mathbf{x}) = \kappa \Delta m(t,\mathbf{x}) - f(m(t,\mathbf{x})) + \beta h,
-    \qquad m(0,\mathbf{x})=m_0(\mathbf{x}),
-\end{equation}
-where the effective diffusion coefficient is given by
+By symmetry $\int J(z)\,z\,dz = 0$ and isotropy 
+$\int J(z)\, z_i z_j\,dz = \frac{m_2}{d}\delta_{ij}$, we obtain
 \begin{equation}
-    \kappa = \beta \frac{m_2}{2d} \gamma^2,
+    (J_\gamma * m)(x) = m(x) + \frac{\gamma^2 m_2}{2d}\,\Delta m(x) + O(\gamma^4).
 \end{equation}
-with $m_2 = \int_{\mathbb{R}^d} |x|^2 J(x) dx$ being the second moment of the kernel $J$. And the reaction term is
+Here, $m_2$ is the second moment of $J$.
+
+Define $\varepsilon_\gamma = \frac{\gamma^2 m_2}{2d}$, we have the local PDE approximation
 \begin{equation}
-    f(m) = -rm - u m^3 + \text{higher order terms}, \quad r = 1-\beta, \quad u = \frac{\beta^3}{3}.
-\end{equation} 
+    \label{eq:local_tanh}
+    \frac{\partial m}{\partial t} = -\,m + \tanh\!\Big(\beta\big(m + \varepsilon_\gamma \Delta m + h\big)\Big).
+\end{equation}
+
+\paragraph{Step 2: Expansion of $\tanh$.}
+The nonlocal dynamics reads
+\begin{equation}
+\partial_t m = -\,m + \tanh\!\Big(\beta\big((J_\gamma * m)(x) + h\big)\Big).
+\end{equation}
+Using Step~1,
+\begin{equation}  
+\beta\big((J_\gamma*m)(x) + h\big) = a + \delta + O(\gamma^4),
+\quad a = \beta(m+h), \quad \delta = \beta \varepsilon_\gamma \Delta m.
+\end{equation}
+Expanding $\tanh$ around $a$:
+\begin{equation}
+\tanh(a+\delta) 
+= \tanh(a) + \text{sech}^2(a)\,\delta + O(\delta^2).
+\end{equation}
+Thus,
+\begin{equation}
+\tanh\!\Big(\beta((J_\gamma*m)(x) + h)\Big) 
+= \tanh\!\big(\beta(m+h)\big) 
++ \beta \varepsilon_\gamma \text{sech}^2\!\big(\beta(m+h)\big)\,\Delta m
++ O(\gamma^4).
+\end{equation}
+For small $m,h$, expand
+\begin{equation}
+    \begin{split}
+\tanh\!\big(\beta(m+h)\big) 
+&= \beta(m+h) - \frac{\beta^3}{3}(m+h)^3 + O(|m+h|^5),\\
+\text{sech}^2\!\big(\beta(m+h)\big) 
+&= 1 - \beta^2(m+h)^2 + O(|m+h|^4).
+    \end{split}
+\end{equation}
+
+\paragraph{Resulting local PDE.}
+Keeping terms up to cubic order in $m,h$ and $O(\gamma^2)$ in diffusion gives
+\begin{equation}
+     \begin{split}
+    \label{eq:local}
+\partial_t m
+& = \kappa\, \Delta m 
++ (\beta - 1)\, m - \frac{\beta^3}{3}\, m^3 + \beta h
+- \beta^3(m^2 h + m h^2) - \frac{\beta^3}{3} h^3
++ O(\gamma^4, |m|^5, |h|^5),\\
+& = \kappa\, \Delta m 
+        \end{split}
+\end{equation}
+with the effective diffusion coefficient
+\begin{equation}
+\kappa = \beta \varepsilon_\gamma = \beta\, \frac{m_2}{2d}\, \gamma^2.
+\end{equation}
+
+
+\paragraph{Allen-Cahn form.}
+As a simplified model, we consider the Allen-Cahn equation:
+\begin{equation}
+    \label{eq:allen-cahn}
+\partial_t m = \kappa\, \Delta m - f(m) + \beta h,
+\qquad
+f(m) = r m + u m^3,
+\end{equation}
+with parameters
+\begin{equation}
+r = 1-\beta, 
+\qquad u = \frac{\beta^3}{3}.
+\end{equation}
+
 
 
 \section{Experimental Settings}
@@ -383,7 +454,6 @@ This computational framework will provide insights into:
 \end{itemize}
 
 \subsection{Data v.s. PDE Solutions}
-We compare the original data generated by \Cref{alg:gillespie} and PDE solutions under different settings.
 \begin{table}[h]
     \centering
     \begin{tabular}{lllll}
@@ -422,7 +492,8 @@ We compare the original data generated by \Cref{alg:gillespie} and PDE solutions
     \label{tab:pde_comparison}
 \end{table}
 
-We present the results in \Cref{tab:pde_comparison}. The arrangement of the figure follows a $3 \times 4$ grid layout to clearly compare the original data and the PDE solutions.  
+We present the results in \Cref{tab:pde_comparison}. 
+We compare the results from microscopic simulations (\Cref{alg:tau-leaping}) with the solutions of the nonlocal PDE (\cref{eq:nonlocal}) and the local PDE with $\tanh$ form (\cref{eq:local_tanh}) and the Allen-Cahn equation (\cref{eq:allen-cahn}) from $t=0$ to $t=20$, under different settings of external field $h$, temperature $T$, kernel parameter $\epsilon$ and lattice size $L$. The figures are arranged as a $4\times 4$ grid, displaying the initial state, the final state, the difference between the microscopic simulation and the the PDE solutions and macroscopic statistics (magnetization, free energy and susceptibility) over time. These metrics are computed from the coarse-grained magnetization field $m(t,x)$ and their definitions are provided below.
 
 
 % with epsilon = 0.015625
