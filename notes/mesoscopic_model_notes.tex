@@ -440,6 +440,7 @@ To investigate the role of interaction range in nonlocal dynamics, we vary the k
     \item \textbf{Local interactions}: $\gamma \to 0$ (nearest-neighbor only)
     \item \textbf{Short-range nonlocal}: $\gamma = 2\delta$ (extended local interactions)
     \item \textbf{Medium-range nonlocal}: $\gamma = 4\delta$ (moderate nonlocal interactions)
+    \item \textbf{Long-range nonlocal}: $\gamma = 8\delta$ (strong nonlocal interactions)
 \end{itemize}
 
 This systematic variation allows us to study the transition from local to nonlocal behavior and its impact on pattern formation and dynamics.
@@ -473,7 +474,7 @@ This computational framework will provide insights into:
         0 & 4 & 0.0625  & 1024 & \Cref{fig:pde_comparison_h0_T4_eps0.0625}  \\
         1 & 1 & 0.0625  & 1024 & \Cref{fig:pde_comparison_h1_T1_eps0.0625}  \\
         1 & 4 & 0.0625  & 1024 & \Cref{fig:pde_comparison_h1_T4_eps0.0625}  \\
-        0 & 1 & 0.015625 & 1024 & \Cref{fig:pde_comparison_h0_T1_eps0.015625_L2048} \\
+        0 & 1 & 0.015625 & 2048 & \Cref{fig:pde_comparison_h0_T1_eps0.015625_L2048} \\
         0 & 4 & 0.015625 & 2048 & \Cref{fig:pde_comparison_h0_T4_eps0.015625_L2048} \\
         1 & 1 & 0.015625 & 2048 & \Cref{fig:pde_comparison_h1_T1_eps0.015625_L2048} \\
         1 & 4 & 0.015625 & 2048 & \Cref{fig:pde_comparison_h1_T4_eps0.015625_L2048} \\
@@ -492,8 +493,9 @@ This computational framework will provide insights into:
     \label{tab:pde_comparison}
 \end{table}
 
-We present the results in \Cref{tab:pde_comparison}. 
-We compare the results from microscopic simulations (\Cref{alg:tau-leaping}) with the solutions of the nonlocal PDE (\cref{eq:nonlocal}) and the local PDE with $\tanh$ form (\cref{eq:local_tanh}) and the Allen-Cahn equation (\cref{eq:allen-cahn}) from $t=0$ to $t=20$, under different settings of external field $h$, temperature $T$, kernel parameter $\epsilon$ and lattice size $L$. The figures are arranged as a $4\times 4$ grid, displaying the initial state, the final state, the difference between the microscopic simulation and the the PDE solutions and macroscopic statistics (magnetization, free energy and susceptibility) over time. These metrics are computed from the coarse-grained magnetization field $m(t,x)$ and their definitions are provided below.
+The results are presented in \Cref{tab:pde_comparison}. 
+We compare the results from microscopic simulations (\Cref{alg:tau-leaping}) with the solutions of the nonlocal PDE (\cref{eq:nonlocal}) and the local PDE with $\tanh$ form (\cref{eq:local_tanh}) and the Allen-Cahn equation (\cref{eq:allen-cahn}) from $t=0$ to $t=20$, under different settings of external field $h$, temperature $T$, kernel parameter $\epsilon$ and lattice size $L$. 
+The figures are arranged as a $4\times 4$ grid, displaying the initial state, the final state, the difference between the microscopic simulation and the the PDE solutions and macroscopic statistics (magnetization, free energy and susceptibility) over time. These metrics are computed from the coarse-grained magnetization field $m(t,x)$ and their definitions are provided below.
 
 
 % with epsilon = 0.015625
@@ -739,6 +741,45 @@ where $\langle\cdot\rangle_x$ denotes the spatial average over the grid, i.e., $
 \end{equation}
 These correspond to the $\textit{Mean $|\mathrm{PDE}-\mathrm{Data}|$ vs Time}$ panel.
 
+\subsection{Main Findings from PDE Comparisons}
+\label{subsec:main_findings}
+We summarize the main findings from the PDE comparison experiments.
+First, as the lattice size $L$ increases, the standard deviation of the magnetization decreases 
+(as illustrated in the three pairs of figures: 
+\cref{fig:pde_comparison_h0_T1_eps0.015625,fig:pde_comparison_h0_T1_eps0.015625_L2048}, 
+\cref{fig:pde_comparison_h0_T4_eps0.015625,fig:pde_comparison_h0_T4_eps0.015625_L2048}, 
+and \cref{fig:pde_comparison_h1_T4_eps0.015625,fig:pde_comparison_h1_T4_eps0.015625_L2048}). 
+This observation is consistent with the theoretical results : as $L \to \infty$, the fluctuations of the empirical magnetization vanish and the empirical magnetization converges to the solution of the hydrodynamic limit PDE.
+
+Second, the local PDE with $\tanh$ form and with simplified polynomial form (Allen-Cahn) both provide good approximations to the microscopic dynamics when the kernel range $\gamma$ is small (e.g., $\gamma=2\delta$ and $\gamma=4\delta$). 
+However, as $\gamma$ increases (e.g., $\gamma=8\delta$), the nonlocal PDE consistently outperforms the local PDEs in terms of accuracy. 
+This is particularly evident in the low-temperature regime ($T=1$) with zero external field ($h=0$), where the local PDEs struggle to capture the intricate domain structures formed during phase separation (as shown in \cref{fig:pde_comparison_h0_T1_eps0.0625,fig:pde_comparison_h0_T1_eps0.0625_L2048}). 
+In contrast, the nonlocal PDE effectively captures these structures, leading to significantly lower error metrics.
+Also, the local PDE with $\tanh$ form generally outperforms the Allen-Cahn equation.
+
+Third, at low temperature ($T=1$) with a narrow kernel ($\gamma = 2\delta$) 
+(see \Cref{fig:pde_comparison_h0_T1_eps0.015625,fig:pde_comparison_h0_T1_eps0.015625_L2048}), 
+the non-local PDE approximation performs worse than the local Allen-Cahn model. 
+This discrepancy is most likely due to numerical errors in evaluating the discrete convolution with such a narrow kernel, 
+as the data are generated on a fine lattice while the non-local PDE is solved on a coarser grid. 
+As the kernel range increases, these convolution errors diminish. 
+A quantitative comparison of errors for different kernel ranges is provided in \Cref{tab:convolution_error}.
+
+\begin{table}
+    \centering
+    \begin{tabular}{lllll}
+        \hline
+        \hline
+        \textbf{$\gamma$} & $1\delta$ & $2\delta$ & $4\delta$ & $8\delta$ \\
+        \hline
+        Convolution Error & 0.003111 & 0.001017 & 0.000366 & 0.000135\\
+        \hline
+        \hline
+    \end{tabular}
+    \caption{Comparison of discrete convolution error with different kernel range $\gamma$. The convolution error is calculated as the mean absolute error between the discrete convolution on a $1024\times 1024$ lattice and the coarse-grained $128 \times 128$ lattice, averaged over 20 random magnetization fields.}
+    \label{tab:convolution_error}
+\end{table}
+
 \section{Network Training}
 
 Recall that we want to train a network to predict the dynamics of the system.
@@ -747,7 +788,33 @@ Recall that we want to train a network to predict the dynamics of the system.
 \partial_t m(t,x) \;=\; -\,m(t,x)\;+\;\tanh\!\Big(\beta\, (J_\gamma * m)(t,x) + \beta h\Big), \qquad m(0,x)=m_0(x),
 \end{equation}
 
-\section{Theoretical analysis of the nonlocal Glauber--Kac PDE (GPT-generated, to be checked)} 
+We have a generator parameterized like
+\begin{equation}
+    (\mathcal{L}m)(t,x) = F_\theta(I_\theta (m)(t,x), m(t,x))
+\end{equation}
+
+\begin{itemize}
+    \item $m(.)$ can be a learned smooth function or $m_i$ itself; [-1, 1]
+    \item $F_\theta(I,m)$ is $\mathbb{R}^2 \to \mathbb{R}$
+    \begin{enumerate}
+        \item Strong Prior: $F(I, m)=-Am+\tanh(\beta(BI+m+h))$; $F(I, m)=-Am+\tanh(BI+Cm+Dh))$, where $A,B,C,D$ are learnable parameters
+        \item Weak Prior: an MLP with input size of 3 layers with hidden size of 128
+    \end{enumerate}
+    \item $I_\theta$ means we have a kernel $J_\theta$ to learn;
+\end{itemize}
+
+
+If the objective is to infer the interaction kernel J from data: 
+(the obs part is obtained by difference? how we verify the learned structure?)
+
+\begin{equation}
+    J^\star, F^\star \;=\; \arg\min_{J, F}\;
+\sum_{m \in \mathcal{D}}
+\bigl\|\, \mathcal{L}(m;J,F)\;-\;\partial_t m_{\mathrm{obs}} \,\bigr\|_{L^2(\Omega)}^{2}.
+\end{equation}
+
+
+\section{Theoretical analysis of the nonlocal Glauber-Kac PDE (GPT-generated, to be checked)} 
 \label{sec:nonlocal_theory}
 
 We summarize key analytical properties of the nonlocal evolution \eqref{eq:nonlocal-recall} on the periodic domain $\Omega=\mathbb{T}^d$, where the Kac kernel $J_\gamma$ is nonnegative and normalized (so that $\int_\Omega J_\gamma = 1$), and $\beta>0$ and $h\in\mathbb{R}$ are fixed parameters.
@@ -818,33 +885,6 @@ an Allen--Cahn type equation with state-dependent diffusion coefficient $\beta\,
 \subsection{Qualitative implications}
 Because $\widehat{J_\gamma}(k)$ is maximal at $k=0$, the first instability is spatially uniform. Thus, beyond the mean-field threshold (e.g., $\beta>1$ at $h\approx0$), dynamics tends to select homogeneous magnetized states $\pm m^*$ rather than finite-wavenumber patterns; interfaces connecting phases may form, with their width and motion modulated by the nonlocal interaction range.
 
-
-
-
-We have a generator parameterized like
-\begin{equation}
-    (\mathcal{L}m)(t,x) = F_\theta(I_\theta (m)(t,x), m(t,x))
-\end{equation}
-
-\begin{itemize}
-    \item $m(.)$ can be a learned smooth function or $m_i$ itself; [-1, 1]
-    \item $F_\theta(I,m)$ is $\mathbb{R}^2 \to \mathbb{R}$
-    \begin{enumerate}
-        \item Strong Prior: $F(I, m)=-Am+\tanh(\beta(BI+m+h))$; $F(I, m)=-Am+\tanh(BI+Cm+Dh))$, where $A,B,C,D$ are learnable parameters
-        \item Weak Prior: an MLP with input size of 3 layers with hidden size of 128
-    \end{enumerate}
-    \item $I_\theta$ means we have a kernel $J_\theta$ to learn;
-\end{itemize}
-
-
-If the objective is to infer the interaction kernel J from data: 
-(the obs part is obtained by difference? how we verify the learned structure?)
-
-\begin{equation}
-    J^\star, F^\star \;=\; \arg\min_{J, F}\;
-\sum_{m \in \mathcal{D}}
-\bigl\|\, \mathcal{L}(m;J,F)\;-\;\partial_t m_{\mathrm{obs}} \,\bigr\|_{L^2(\Omega)}^{2}.
-\end{equation}
 
 
 \nocite{*}
