@@ -77,21 +77,21 @@ The classical Ising model only considers nearest-neighbor interactions.
 However, many physical systems exhibit \emph{nonlocal interactions} that extend beyond immediate neighbors. 
 To incorporate such effects, one introduces \emph{Kac-type potentials}, which are long-range interaction kernels that decay with distance.
 
-A Kac potential $J_\gamma(x,y)$ is typically defined as a smooth, radially symmetric function that depends on a parameter $\gamma > 0$ controlling the interaction range:
+A Kac potential $J_\epsilon(x,y)$ is typically defined as a smooth, radially symmetric function that depends on a parameter $\epsilon > 0$ controlling the interaction range:
 \begin{equation}
-    J_\gamma(x, y) = \gamma^{-d} J\left(\frac{|x - y|}{\gamma}\right),
+    J_\epsilon(x, y) = \epsilon^{-d} J\left(\frac{|x - y|}{\epsilon}\right),
 \end{equation}
-where $J(r)$ is a normalized kernel function, and $d$ is the spatial dimension. Larger values of $\gamma$ correspond to longer-range interactions, while smaller values approach the nearest-neighbor limit.
+where $J(r)$ is a normalized kernel function, and $d$ is the spatial dimension. Larger values of $\epsilon$ correspond to longer-range interactions, while smaller values approach the nearest-neighbor limit.
 
 A widely used example of a Kac potential is the Gaussian kernel:
 \begin{equation}\label{eq:J-Gaussian}
-J_\gamma(x) \;=\; \frac{1}{(2\pi\gamma^2)^{d/2}} 
-\exp\!\left(-\frac{|x|^2}{2\gamma^2}\right).
+J_\epsilon(x) \;=\; \frac{1}{(2\pi\epsilon^2)^{d/2}} 
+\exp\!\left(-\frac{|x|^2}{2\epsilon^2}\right).
 \end{equation}
 
 The Ising Hamiltonian with Kac interactions is given by
 \begin{equation}\label{eq:H-Kac}
-    H(\sigma) \;=\; -\frac{1}{2}\sum_{x,y} J_\gamma(x,y)\,\sigma(x)\sigma(y) \;-\; h \sum_{x} \sigma(x).
+    H(\sigma) \;=\; -\frac{1}{2}\sum_{x,y} J_\epsilon(x,y)\,\sigma(x)\sigma(y) \;-\; h \sum_{x} \sigma(x).
 \end{equation}
 
 \subsection{Glauber Dynamics}
@@ -103,7 +103,7 @@ At each site, spins flip randomly due to thermal fluctuations, with probabilitie
 Let $\beta > 0$ be the inverse temperature. 
 For a given spin $\sigma(x)$, the probability of flipping at site $x$ depends on the local field
 \begin{equation}\label{eq:hloc}
-    h_{\gamma}(x) \;=\; h + \sum_{y\neq x} J_\gamma(x-y)\,\sigma(y).
+    h_{\epsilon}(x) \;=\; h + \sum_{y\neq x} J_\epsilon(x-y)\,\sigma(y).
 \end{equation}
 The corresponding flip probability can be written in several equivalent forms:
 \begin{equation}\label{eq:flip-prob}
@@ -111,14 +111,14 @@ The corresponding flip probability can be written in several equivalent forms:
     P\big(\sigma(x)\!\to\!-\sigma(x)\big) 
     &= \frac{1}{1 + \exp\!\big(\beta \Delta H_x\big)} 
         \quad \text{(from energy difference)} \\
-    &= \frac{1}{1 + \exp\!\big(2\beta\,\sigma(x) h_{\gamma}(x)\big)} 
+    &= \frac{1}{1 + \exp\!\big(2\beta\,\sigma(x) h_{\epsilon}(x)\big)} 
         \quad \text{(logistic form)} \\
-    &= \frac{\exp\!\big(-\beta\sigma(x) h_{\gamma}(x)\big)}
-            {2\cosh\!\big(\beta h_{\gamma}(x)\big)} 
+    &= \frac{\exp\!\big(-\beta\sigma(x) h_{\epsilon}(x)\big)}
+            {2\cosh\!\big(\beta h_{\epsilon}(x)\big)} 
         \quad \text{(factorized form, cf.~Masi et al.\cite{de1994glauber})}.
 \end{split}
 \end{equation}
-Here, $\Delta H_x = H(\sigma^x) - H(\sigma) = 2\sigma(x)h_\gamma(x)$ denotes the energy change when flipping the spin at $x$.
+Here, $\Delta H_x = H(\sigma^x) - H(\sigma) = 2\sigma(x)h_\epsilon(x)$ denotes the energy change when flipping the spin at $x$.
 
 \paragraph{Initialization by Gaussian Random Field.}
 Let the lattice be a periodic $L\times L$ grid
@@ -209,7 +209,7 @@ The procedure is:
 \caption{Gillespie Simulation of Glauber Dynamics}
 \label{alg:gillespie}
 \begin{algorithmic}[1]
-\State Initialize spin configuration $\sigma$ and compute local fields $h_\gamma(x)$.
+\State Initialize spin configuration $\sigma$ and compute local fields $h_\epsilon(x)$.
 \While{simulation time $t < t_{\mathrm{end}}$}
     \State Compute total flip rate 
     \[
@@ -221,7 +221,7 @@ The procedure is:
         \frac{P(\sigma(x)\!\to\!-\sigma(x))}{R}.
     \]
     \State Flip spin: $\sigma(x) \gets -\sigma(x)$.
-    \State Update local fields $h_\gamma(y)$ if needed.
+    \State Update local fields $h_\epsilon(y)$ if needed.
     \State Advance time: $t \gets t + \Delta t$.
 \EndWhile
 \end{algorithmic}
@@ -242,7 +242,7 @@ This allows many events to be processed in parallel.
 \While{$t < T_{\text{end}}$}
     \State Compute local field $h_{\text{loc}}$
     \State Compute flip rates $r_i = \frac{1}{1 + \exp(2 \beta h_{\text{loc},i} s_i)}$
-    \State Choose $\tau = \epsilon / \max_i r_i$
+    \State Choose $\tau = \hat{\tau} / \max_i r_i$
     \State Sample $K_i \sim \mathrm{Poisson}(r_i \tau)$
     \State Update spins: if $K_i$ is odd, flip $s_i$
     \State $t \gets t + \tau$
@@ -282,7 +282,7 @@ These findings confirm that the $\tau$-leaping method is a valid approximation f
 \section{PDE}
 
 \subsection{Hydrodynamic Limit for Glauber-Kac}
-
+\label{subsec:hydro}
 Starting from the Glauber dynamics introduced in \cref{sec:glauber}, we consider the lattice in $[0,1]^d$. When the lattice size tends to infinity $L\to\infty$, and the empirical magnetization field
 \begin{equation}
     m^L(t,\mathbf{x}) = \frac{1}{B^d}\sum_{z\in \Lambda_B(\mathbf{x})} \sigma_t(z)
@@ -290,56 +290,56 @@ Starting from the Glauber dynamics introduced in \cref{sec:glauber}, we consider
 is coarse-grained over mesoscopic blocks of size $B$, the law of large numbers implies convergence of $m^L(t,\mathbf{x})$ to a deterministic limit $m(t,\mathbf{x})$. 
 In this hydrodynamic limit, the Glauber dynamics is described by the nonlinear nonlocal PDE
 \begin{equation}\label{eq:nonlocal}
-    \partial_t m(t,\mathbf{x}) \;=\; -\,m(t,\mathbf{x})\;+\;\tanh\!\Big(\beta\, (J_\gamma * m)(t,\mathbf{x}) + \beta h\Big), 
+    \partial_t m(t,\mathbf{x}) \;=\; -\,m(t,\mathbf{x})\;+\;\tanh\!\Big(\beta\, (J_\epsilon * m)(t,\mathbf{x}) + \beta h\Big), 
     \qquad m(0,\mathbf{x})=m_0(\mathbf{x}),
 \end{equation}
 where the convolution operator is defined by
 \begin{equation}
     \label{eq:convolution}
-    (J_\gamma * m)(\mathbf{x}) \;=\; \int_{\mathbb{T}^d} J_\gamma(\mathbf{x},\mathbf{y})\,m(\mathbf{y})\,d\mathbf{y}.
+    (J_\epsilon * m)(\mathbf{x}) \;=\; \int_{\mathbb{T}^d} J_\epsilon(\mathbf{x},\mathbf{y})\,m(\mathbf{y})\,d\mathbf{y}.
 \end{equation}
 
 Equation~\eqref{eq:nonlocal} is the mesoscopic limit of the Glauber--Kac dynamics: 
 the microscopic randomness averages out, and the macroscopic magnetization evolves deterministically according to a nonlocal reaction term given by the Kac potential.
 
 \subsection{From the Nonlocal to the Local PDE}\paragraph{Step 1: Convolution expansion.}
-Assume the rescaled kernel $J_\gamma(x) = \gamma^{-d} J(x/\gamma)$ with $\int_{\mathbb{R}^d} J(z)\,dz = 1$, $J$ even, and finite second moment 
+Assume the rescaled kernel $J_\epsilon(x) = \epsilon^{-d} J(x/\epsilon)$ with $\int_{\mathbb{R}^d} J(z)\,dz = 1$, $J$ even, and finite second moment 
 \begin{equation}
 m_2 = \int_{\mathbb{R}^d} |z|^2 J(z)\,dz.
 \end{equation}
 
 Then
 \begin{equation}
-    (J_\gamma * m)(x) = \int_{\mathbb{R}^d} J(z)\, m(x+\gamma z)\,dz.
+    (J_\epsilon * m)(x) = \int_{\mathbb{R}^d} J(z)\, m(x+\epsilon z)\,dz.
 \end{equation}
-Expanding $m(x+\gamma z)$ in Taylor series:
+Expanding $m(x+\epsilon z)$ in Taylor series:
 \begin{equation}
-m(x+\gamma z) = m(x) + \gamma\, z\cdot \nabla m(x) 
-+ \frac{\gamma^2}{2}\, z^\top \nabla^2 m(x)\, z + O(\gamma^3).
+m(x+\epsilon z) = m(x) + \epsilon\, z\cdot \nabla m(x) 
++ \frac{\epsilon^2}{2}\, z^\top \nabla^2 m(x)\, z + O(\epsilon^3).
 \end{equation}
 
 By symmetry $\int J(z)\,z\,dz = 0$ and isotropy 
 $\int J(z)\, z_i z_j\,dz = \frac{m_2}{d}\delta_{ij}$, we obtain
 \begin{equation}
-    (J_\gamma * m)(x) = m(x) + \frac{\gamma^2 m_2}{2d}\,\Delta m(x) + O(\gamma^4).
+    (J_\epsilon * m)(x) = m(x) + \frac{\epsilon^2 m_2}{2d}\,\Delta m(x) + O(\epsilon^4).
 \end{equation}
 Here, $m_2$ is the second moment of $J$.
 
-Define $\varepsilon_\gamma = \frac{\gamma^2 m_2}{2d}$, we have the local PDE approximation
+Define $\varepsilon_\epsilon = \frac{\epsilon^2 m_2}{2d}$, we have the local PDE approximation
 \begin{equation}
     \label{eq:local_tanh}
-    \frac{\partial m}{\partial t} = -\,m + \tanh\!\Big(\beta\big(m + \varepsilon_\gamma \Delta m + h\big)\Big).
+    \frac{\partial m}{\partial t} = -\,m + \tanh\!\Big(\beta\big(m + \varepsilon_\epsilon \Delta m + h\big)\Big).
 \end{equation}
 
 \paragraph{Step 2: Expansion of $\tanh$.}
 The nonlocal dynamics reads
 \begin{equation}
-\partial_t m = -\,m + \tanh\!\Big(\beta\big((J_\gamma * m)(x) + h\big)\Big).
+\partial_t m = -\,m + \tanh\!\Big(\beta\big((J_\epsilon * m)(x) + h\big)\Big).
 \end{equation}
 Using Step~1,
 \begin{equation}  
-\beta\big((J_\gamma*m)(x) + h\big) = a + \delta + O(\gamma^4),
-\quad a = \beta(m+h), \quad \delta = \beta \varepsilon_\gamma \Delta m.
+\beta\big((J_\epsilon*m)(x) + h\big) = a + \delta + O(\epsilon^4),
+\quad a = \beta(m+h), \quad \delta = \beta \varepsilon_\epsilon \Delta m.
 \end{equation}
 Expanding $\tanh$ around $a$:
 \begin{equation}
@@ -348,10 +348,10 @@ Expanding $\tanh$ around $a$:
 \end{equation}
 Thus,
 \begin{equation}
-\tanh\!\Big(\beta((J_\gamma*m)(x) + h)\Big) 
+\tanh\!\Big(\beta((J_\epsilon*m)(x) + h)\Big) 
 = \tanh\!\big(\beta(m+h)\big) 
-+ \beta \varepsilon_\gamma \text{sech}^2\!\big(\beta(m+h)\big)\,\Delta m
-+ O(\gamma^4).
++ \beta \varepsilon_\epsilon \text{sech}^2\!\big(\beta(m+h)\big)\,\Delta m
++ O(\epsilon^4).
 \end{equation}
 For small $m,h$, expand
 \begin{equation}
@@ -364,7 +364,7 @@ For small $m,h$, expand
 \end{equation}
 
 \paragraph{Resulting local PDE.}
-Keeping terms up to cubic order in $m,h$ and $O(\gamma^2)$ in diffusion gives
+Keeping terms up to cubic order in $m,h$ and $O(\epsilon^2)$ in diffusion gives
 \begin{equation}
      \begin{split}
     \label{eq:local}
@@ -372,13 +372,13 @@ Keeping terms up to cubic order in $m,h$ and $O(\gamma^2)$ in diffusion gives
 & = \kappa\, \Delta m 
 + (\beta - 1)\, m - \frac{\beta^3}{3}\, m^3 + \beta h
 - \beta^3(m^2 h + m h^2) - \frac{\beta^3}{3} h^3
-+ O(\gamma^4, |m|^5, |h|^5),\\
++ O(\epsilon^4, |m|^5, |h|^5),\\
 & = \kappa\, \Delta m 
         \end{split}
 \end{equation}
 with the effective diffusion coefficient
 \begin{equation}
-\kappa = \beta \varepsilon_\gamma = \beta\, \frac{m_2}{2d}\, \gamma^2.
+\kappa = \beta \varepsilon_\epsilon = \beta\, \frac{m_2}{2d}\, \epsilon^2.
 \end{equation}
 
 
@@ -407,8 +407,8 @@ Our computational experiments are designed to systematically explore the paramet
 \begin{itemize}
     \item \textbf{Coupling strength}: $J = 1.0$ (dimensionless units)
     \item \textbf{Critical temperature}: $T_c = 2.27$ (for 2D square lattice)
-    \item \textbf{Lattice size}: $L = 1024$ with coarse-graining to $M = 128$
-    \item \textbf{Block size}: $B = 8$ (coarse-graining ratio $L/M = 8$)
+    \item \textbf{Lattice size}: $L = 1024, 2048$ with coarse-graining to $M = 128$
+    \item \textbf{Block size}: $B = 8, 16$ (coarse-graining ratio $L/M = 8$)
     \item \textbf{Spatial resolution}: $\delta = 1/M = 0.0078125$
 \end{itemize}
 
@@ -437,10 +437,10 @@ The external magnetic field $h$ is varied across four values to study its effect
 To investigate the role of interaction range in nonlocal dynamics, we vary the kernel domain size:
 
 \begin{itemize}
-    \item \textbf{Local interactions}: $\gamma \to 0$ (nearest-neighbor only)
-    \item \textbf{Short-range nonlocal}: $\gamma = 2\delta$ (extended local interactions)
-    \item \textbf{Medium-range nonlocal}: $\gamma = 4\delta$ (moderate nonlocal interactions)
-    \item \textbf{Long-range nonlocal}: $\gamma = 8\delta$ (strong nonlocal interactions)
+    \item \textbf{Local interactions}: $\epsilon \to 0$ (nearest-neighbor only)
+    \item \textbf{Short-range nonlocal}: $\epsilon = 2\delta$ (extended local interactions)
+    \item \textbf{Medium-range nonlocal}: $\epsilon = 4\delta$ (moderate nonlocal interactions)
+    \item \textbf{Long-range nonlocal}: $\epsilon = 8\delta$ (strong nonlocal interactions)
 \end{itemize}
 
 This systematic variation allows us to study the transition from local to nonlocal behavior and its impact on pattern formation and dynamics.
@@ -460,7 +460,7 @@ This computational framework will provide insights into:
     \begin{tabular}{lllll}
         \hline
         \hline
-        \textbf{External field $h$} & \textbf{Temperature $T$} & \textbf{Kernel parameter $\gamma$} & \textbf{Lattice size $L$} & \textbf{Results} \\
+        \textbf{External field $h$} & \textbf{Temperature $T$} & \textbf{Kernel parameter $\epsilon$} & \textbf{Lattice size $L$} & \textbf{Results} \\
         \hline
         0 & 1 & 0.015625 & 1024 & \Cref{fig:pde_comparison_h0_T1_eps0.015625} \\
         0 & 4 & 0.015625 & 1024 & \Cref{fig:pde_comparison_h0_T4_eps0.015625} \\
@@ -751,13 +751,13 @@ First, as the lattice size $L$ increases, the standard deviation of the magnetiz
 and \cref{fig:pde_comparison_h1_T4_eps0.015625,fig:pde_comparison_h1_T4_eps0.015625_L2048}). 
 This observation is consistent with the theoretical results : as $L \to \infty$, the fluctuations of the empirical magnetization vanish and the empirical magnetization converges to the solution of the hydrodynamic limit PDE.
 
-Second, the local PDE with $\tanh$ form and with simplified polynomial form (Allen-Cahn) both provide good approximations to the microscopic dynamics when the kernel range $\gamma$ is small (e.g., $\gamma=2\delta$ and $\gamma=4\delta$). 
-However, as $\gamma$ increases (e.g., $\gamma=8\delta$), the nonlocal PDE consistently outperforms the local PDEs in terms of accuracy. 
+Second, the local PDE with $\tanh$ form and with simplified polynomial form (Allen-Cahn) both provide good approximations to the microscopic dynamics when the kernel range $\epsilon$ is small (e.g., $\epsilon=2\delta$ and $\epsilon=4\delta$). 
+However, as $\epsilon$ increases (e.g., $\epsilon=8\delta$), the nonlocal PDE consistently outperforms the local PDEs in terms of accuracy. 
 This is particularly evident in the low-temperature regime ($T=1$) with zero external field ($h=0$), where the local PDEs struggle to capture the intricate domain structures formed during phase separation (as shown in \cref{fig:pde_comparison_h0_T1_eps0.0625,fig:pde_comparison_h0_T1_eps0.0625_L2048}). 
 In contrast, the nonlocal PDE effectively captures these structures, leading to significantly lower error metrics.
 Also, the local PDE with $\tanh$ form generally outperforms the Allen-Cahn equation.
 
-Third, at low temperature ($T=1$) with a narrow kernel ($\gamma = 2\delta$) 
+Third, at low temperature ($T=1$) with a narrow kernel ($\epsilon = 2\delta$) 
 (see \Cref{fig:pde_comparison_h0_T1_eps0.015625,fig:pde_comparison_h0_T1_eps0.015625_L2048}), 
 the non-local PDE approximation performs worse than the local Allen-Cahn model. 
 This discrepancy is most likely due to numerical errors in evaluating the discrete convolution with such a narrow kernel, 
@@ -770,120 +770,164 @@ A quantitative comparison of errors for different kernel ranges is provided in \
     \begin{tabular}{lllll}
         \hline
         \hline
-        \textbf{$\gamma$} & $1\delta$ & $2\delta$ & $4\delta$ & $8\delta$ \\
+        \textbf{$\epsilon$} & $1\delta$ & $2\delta$ & $4\delta$ & $8\delta$ \\
         \hline
         Convolution Error & 0.003111 & 0.001017 & 0.000366 & 0.000135\\
         \hline
         \hline
     \end{tabular}
-    \caption{Comparison of discrete convolution error with different kernel range $\gamma$. The convolution error is calculated as the mean absolute error between the discrete convolution on a $1024\times 1024$ lattice and the coarse-grained $128 \times 128$ lattice, averaged over 20 random magnetization fields.}
+    \caption{Comparison of discrete convolution error with different kernel range $\epsilon$. The convolution error is calculated as the mean absolute error between the discrete convolution on a $1024\times 1024$ lattice and the coarse-grained $128 \times 128$ lattice, averaged over 20 random magnetization fields.}
     \label{tab:convolution_error}
 \end{table}
-
 \section{Network Training}
+\label{sec:network}
 
-Recall that we want to train a network to predict the dynamics of the system.
-
-\begin{equation}\label{eq:nonlocal-recall}
-\partial_t m(t,x) \;=\; -\,m(t,x)\;+\;\tanh\!\Big(\beta\, (J_\gamma * m)(t,x) + \beta h\Big), \qquad m(0,x)=m_0(x),
-\end{equation}
-
-We have a generator parameterized like
+\subsection{Motivation}
+The hydrodynamic limit derived in \cref{subsec:hydro} leads to the mesoscopic PDE
 \begin{equation}
-    (\mathcal{L}m)(t,x) = F_\theta(I_\theta (m)(t,x), m(t,x))
+\partial_t m(t,x) = -m(t,x) + \tanh\!\big(\beta (J_\epsilon \ast m)(t,x) + \beta h \big),
+\quad m(0,x) = m_0(x).
+\label{eq:hydro}
 \end{equation}
+This deterministic equation provides the baseline dynamics for coarse-grained magnetization.
+However, the precise form of the interaction kernel $J_\epsilon$ and the functional dependence of
+the nonlinear force may not be directly available in practical systems. 
+To bridge this gap, we explore neural-network parameterizations of the generator of the dynamics.
 
+\subsection{Network Parameterizations}
+We consider two levels of prior knowledge.
+
+\paragraph{Strong prior (physics-informed).}
+We constrain the force to have the form
+\begin{equation}
+F(I,m,h) = -A m + \tanh(BI + C m + D h),
+\label{eq:strong_prior}
+\end{equation}
+where $I=(J_\theta \ast m)(x)$ denotes the nonlocal interaction term computed via a learnable kernel $J_\theta$, 
+and $A,B,C,D$ are trainable parameters. 
+This corresponds exactly to the \texttt{ForceTanhNet} architecture in our implementation.
+
+\paragraph{Weak prior (black-box MLP).}
+We also test a more flexible model
+\begin{equation}
+F_\theta(I,m,h) = \text{MLP}_\theta(I,m,h),
+\end{equation}
+where $\text{MLP}_\theta:\mathbb{R}^3 \to \mathbb{R}$ is a fully connected network with hidden layers (e.g.\ 3 layers, width 128, $\tanh$ activations). 
+This allows the network to discover nonlinear dependencies directly from data, at the expense of interpretability.
+
+\subsection{Learnable Kernels}
+The convolutional operator $I_\theta = J_\theta \ast m$ is implemented by parameterized kernels constrained to be nonnegative and sum to one. 
+We investigate three families:
 \begin{itemize}
-    \item $m(.)$ can be a learned smooth function or $m_i$ itself; [-1, 1]
-    \item $F_\theta(I,m)$ is $\mathbb{R}^2 \to \mathbb{R}$
-    \begin{enumerate}
-        \item Strong Prior: $F(I, m)=-Am+\tanh(\beta(BI+m+h))$; $F(I, m)=-Am+\tanh(BI+Cm+Dh))$, where $A,B,C,D$ are learnable parameters
-        \item Weak Prior: an MLP with input size of 3 layers with hidden size of 128
-    \end{enumerate}
-    \item $I_\theta$ means we have a kernel $J_\theta$ to learn;
+  \item \textbf{Softmax kernel:} a fully learnable $K\times K$ kernel with entries parameterized by logits, normalized by softmax.
+  \item \textbf{Gaussian kernel:} isotropic Gaussian with learnable variance parameter.
+  \item \textbf{Elliptical Gaussian kernel:} anisotropic Gaussian with learnable $(\sigma_x, \sigma_y, \theta)$.
+\end{itemize}
+These architectures ensure physical consistency (positivity, normalization) while allowing different degrees of flexibility.
+
+\subsection{Training Objective}
+Given observed trajectories $\{m_{\text{obs}}(t_i,\cdot)\}$ from microscopic simulations, 
+we train the network by minimizing the one-step prediction error of the generator:
+\begin{equation}
+\min_{\theta} \sum_{m \in \mathcal{D}} 
+\left\| L_\theta(m) - \partial_t m_{\text{obs}} \right\|_{L^2(\Omega)}^2,
+\label{eq:training}
+\end{equation}
+where 
+\begin{equation}
+L_\theta(m) = F_\theta(I_\theta(m), m, h).
+\end{equation}
+The time derivatives $\partial_t m_{\text{obs}}$ are estimated from data either by finite differences or regression.
+
+\subsection{Implementation Details}
+\begin{itemize}
+  \item \textbf{Input representation:} magnetization fields $m$ are coarse-grained to size $M\times M$. 
+  At each training step, we sample random spatial coordinates $(x,y)$ and evaluate both $I_\theta(m)$ and $m(x,y)$ using periodic convolution (global evaluation) or local patch sampling.
+  \item \textbf{Loss computation:} prediction $L_\theta(m)$ is compared against the empirical $\partial_t m$ at the same coordinates.
+  \item \textbf{Optimization:} networks are trained with Adam optimizer, learning rate $10^{-3}$, and batch size 16.
 \end{itemize}
 
+\subsection{Planned Experiments}
+The following experiments are included:
+\begin{enumerate}
+  \item \textbf{Strong vs weak prior:} compare \eqref{eq:strong_prior} with unconstrained MLPs in terms of predictive accuracy and generalization.
+  \item \textbf{Kernel families:} test softmax, Gaussian, and elliptical Gaussian kernels for learning effective interaction structures.
+  \item \textbf{Generalization across regimes:} train at high temperature ($T > T_c$) and evaluate at low temperature ($T < T_c$), and vice versa.
+  \item \textbf{Comparison with PDE models:} evaluate learned generators against the original hydrodynamic PDE \eqref{eq:nonlocal} and its local Allen–Cahn approximation.
+\end{enumerate}
+This systematic study will assess how inductive bias and kernel parameterization influence both accuracy and interpretability of learned mesoscopic models.
 
-If the objective is to infer the interaction kernel J from data: 
-(the obs part is obtained by difference? how we verify the learned structure?)
 
-\begin{equation}
-    J^\star, F^\star \;=\; \arg\min_{J, F}\;
-\sum_{m \in \mathcal{D}}
-\bigl\|\, \mathcal{L}(m;J,F)\;-\;\partial_t m_{\mathrm{obs}} \,\bigr\|_{L^2(\Omega)}^{2}.
-\end{equation}
+% \section{Theoretical analysis of the nonlocal Glauber-Kac PDE (GPT-generated, to be checked)} 
+% \label{sec:nonlocal_theory}
 
+% We summarize key analytical properties of the nonlocal evolution \eqref{eq:nonlocal-recall} on the periodic domain $\Omega=\mathbb{T}^d$, where the Kac kernel $J_\epsilon$ is nonnegative and normalized (so that $\int_\Omega J_\epsilon = 1$), and $\beta>0$ and $h\in\mathbb{R}$ are fixed parameters.
 
-\section{Theoretical analysis of the nonlocal Glauber-Kac PDE (GPT-generated, to be checked)} 
-\label{sec:nonlocal_theory}
+% \subsection{Well-posedness and invariant bounds}
+% Let $\mathcal{J}[m] = (J_\epsilon * m)$ denote periodic convolution. The right-hand side
+% \[
+% \mathcal{F}[m] \;=\; -m + \tanh\big(\beta\,(\mathcal{J}[m] + h)\big)
+% \]
+% is locally Lipschitz on $L^\infty(\Omega)$ because $\tanh$ is globally Lipschitz and $\mathcal{J}$ is a bounded linear operator on $L^\infty$. Hence, for any $m_0\in L^\infty$, there exists a unique mild/strong solution $m(t)\in C([0,\infty);L^\infty)$.
 
-We summarize key analytical properties of the nonlocal evolution \eqref{eq:nonlocal-recall} on the periodic domain $\Omega=\mathbb{T}^d$, where the Kac kernel $J_\gamma$ is nonnegative and normalized (so that $\int_\Omega J_\gamma = 1$), and $\beta>0$ and $h\in\mathbb{R}$ are fixed parameters.
+% Moreover, the interval $(-1,1)$ is invariant: if $\|m_0\|_{L^\infty}\le 1$, then $\|m(t)\|_{L^\infty}<1$ for all $t>0$. Indeed, for any fixed $x$, the map $u\mapsto -u+\tanh(\beta a)$ with $a\in\mathbb{R}$ points inward at $u=\pm1$ since $-\,\operatorname{sign}(u)+\tanh(\cdot)$ has opposite sign at the boundary, and $|\tanh|<1$.
 
-\subsection{Well-posedness and invariant bounds}
-Let $\mathcal{J}[m] = (J_\gamma * m)$ denote periodic convolution. The right-hand side
-\[
-\mathcal{F}[m] \;=\; -m + \tanh\big(\beta\,(\mathcal{J}[m] + h)\big)
-\]
-is locally Lipschitz on $L^\infty(\Omega)$ because $\tanh$ is globally Lipschitz and $\mathcal{J}$ is a bounded linear operator on $L^\infty$. Hence, for any $m_0\in L^\infty$, there exists a unique mild/strong solution $m(t)\in C([0,\infty);L^\infty)$.
+% \subsection{Spatially uniform equilibria and mean-field equation}
+% Spatially uniform equilibria $m(t,x)\equiv m^*$ satisfy the scalar fixed-point equation
+% \begin{equation}\label{eq:mf_fp}
+%  m^* \;=\; \tanh\big(\beta(m^* + h)\big),
+% \end{equation}
+% which coincides with the Curie--Weiss mean-field self-consistency relation. For $h=0$, the unique solution is $m^*=0$ when $\beta\le1$, while for $\beta>1$ a pitchfork bifurcation occurs: $m^*=0$ becomes unstable and two stable nonzero equilibria $\pm m^*(\beta)$ emerge.
 
-Moreover, the interval $(-1,1)$ is invariant: if $\|m_0\|_{L^\infty}\le 1$, then $\|m(t)\|_{L^\infty}<1$ for all $t>0$. Indeed, for any fixed $x$, the map $u\mapsto -u+\tanh(\beta a)$ with $a\in\mathbb{R}$ points inward at $u=\pm1$ since $-\,\operatorname{sign}(u)+\tanh(\cdot)$ has opposite sign at the boundary, and $|\tanh|<1$.
+% \subsection{Linearization and spectral stability}
+% Let $m(t,x)=m^*+\varepsilon\,\varphi(t,x)$ with $m^*$ solving \eqref{eq:mf_fp}. Using $\tanh'(z)=\operatorname{sech}^2(z)$,
+% \[
+% \partial_t \varphi \;=\; -\varphi\; +\; \beta\,\operatorname{sech}^2\!\big(\beta(m^*+h)\big)\; (J_\epsilon*\varphi)\; +\; O(\varepsilon^2).
+% \]
+% Expanding in Fourier modes $\varphi_k e^{i k\cdot x}$, with $\widehat{J_\epsilon}(k)$ the Fourier transform of $J_\epsilon$, each mode evolves as $\partial_t \varphi_k = \lambda_k\,\varphi_k$ with growth rate
+% \begin{equation}\label{eq:lin_rate}
+%  \lambda_k \;=\; -1\; +\; \beta\,\operatorname{sech}^2\!\big(\beta(m^*+h)\big)\,\widehat{J_\epsilon}(k).
+% \end{equation}
+% Because $J_\epsilon\ge0$ and is normalized, $\widehat{J_\epsilon}(0)=1$ and $\widehat{J_\epsilon}(k)\le1$. Thus the first loss of stability occurs at the homogeneous mode $k=0$; there is no finite-wavenumber (Turing-type) selection. In particular, for $h=0$ and the disordered equilibrium $m^*=0$ one has $\lambda_k = -1 + \beta\widehat{J_\epsilon}(k)$, leading to the mean-field critical value $\beta_c=1$.
 
-\subsection{Spatially uniform equilibria and mean-field equation}
-Spatially uniform equilibria $m(t,x)\equiv m^*$ satisfy the scalar fixed-point equation
-\begin{equation}\label{eq:mf_fp}
- m^* \;=\; \tanh\big(\beta(m^* + h)\big),
-\end{equation}
-which coincides with the Curie--Weiss mean-field self-consistency relation. For $h=0$, the unique solution is $m^*=0$ when $\beta\le1$, while for $\beta>1$ a pitchfork bifurcation occurs: $m^*=0$ becomes unstable and two stable nonzero equilibria $\pm m^*(\beta)$ emerge.
+% \subsection{Lyapunov functional (free energy) and dissipation}
+% Define the entropy density $\Phi:[-1,1]\to\mathbb{R}$ by $\Phi'(m)=\operatorname{artanh}(m)$, e.g.
+% \begin{equation}\label{eq:entropy}
+%  \Phi(m) \;=\; \tfrac12\Big[(1+m)\ln(1+m)+(1-m)\ln(1-m)\Big] - \ln 2.
+% \end{equation}
+% Consider the functional
+% \begin{equation}\label{eq:free_energy}
+%  \mathcal{F}[m] \;=\; \int_\Omega \Big( \Phi(m(x)) - \tfrac{\beta}{2}\,m(x)\,(J_\epsilon*m)(x) - \beta h\,m(x) \Big)\,dx.
+% \end{equation}
+% Its $L^2$ variational derivative is
+% \begin{equation}\label{eq:variational}
+%  \frac{\delta \mathcal{F}}{\delta m}(x) \;=\; \operatorname{artanh}(m(x)) - \beta\Big((J_\epsilon*m)(x)+h\Big).
+% \end{equation}
+% Along solutions of \eqref{eq:nonlocal-recall},
+% \begin{align}
+%  \frac{d}{dt}\,\mathcal{F}[m(t)]
+%  &= \int_\Omega \frac{\delta \mathcal{F}}{\delta m}(x)\,\partial_t m(t,x)\,dx \\
+%  &= \int_\Omega \Big( \operatorname{artanh}(m) - \beta(\mathcal{J}[m]+h) \Big)\,\Big( -m + \tanh\big(\beta(\mathcal{J}[m]+h)\big) \Big)\,dx.
+% \end{align}
+% Using that $\tanh$ and $\operatorname{artanh}$ are mutual inverses and strictly increasing, one has the pointwise inequality
+% \[
+%  \big(\operatorname{artanh}(x) - y\big)\,\big(\tanh(y) - x\big) \;\le\; 0\quad \text{for all } x\in(-1,1),\; y\in\mathbb{R},
+% \]
+% with equality iff $x=\tanh(y)$. Hence $\tfrac{d}{dt}\,\mathcal{F}[m(t)] \le 0$, and equality holds precisely at equilibria satisfying $m = \tanh(\beta(\mathcal{J}[m]+h))$. Therefore, $\mathcal{F}$ is a Lyapunov functional, and solutions converge to the equilibrium set (LaSalle invariance principle).
 
-\subsection{Linearization and spectral stability}
-Let $m(t,x)=m^*+\varepsilon\,\varphi(t,x)$ with $m^*$ solving \eqref{eq:mf_fp}. Using $\tanh'(z)=\operatorname{sech}^2(z)$,
-\[
-\partial_t \varphi \;=\; -\varphi\; +\; \beta\,\operatorname{sech}^2\!\big(\beta(m^*+h)\big)\; (J_\gamma*\varphi)\; +\; O(\varepsilon^2).
-\]
-Expanding in Fourier modes $\varphi_k e^{i k\cdot x}$, with $\widehat{J_\gamma}(k)$ the Fourier transform of $J_\gamma$, each mode evolves as $\partial_t \varphi_k = \lambda_k\,\varphi_k$ with growth rate
-\begin{equation}\label{eq:lin_rate}
- \lambda_k \;=\; -1\; +\; \beta\,\operatorname{sech}^2\!\big(\beta(m^*+h)\big)\,\widehat{J_\gamma}(k).
-\end{equation}
-Because $J_\gamma\ge0$ and is normalized, $\widehat{J_\gamma}(0)=1$ and $\widehat{J_\gamma}(k)\le1$. Thus the first loss of stability occurs at the homogeneous mode $k=0$; there is no finite-wavenumber (Turing-type) selection. In particular, for $h=0$ and the disordered equilibrium $m^*=0$ one has $\lambda_k = -1 + \beta\widehat{J_\gamma}(k)$, leading to the mean-field critical value $\beta_c=1$.
+% \subsection{Local (Allen--Cahn) limit as $\epsilon\to0$}
+% Assume $m$ is smooth at the interaction scale. For normalized, radially symmetric kernels one has the classical expansion
+% \begin{equation}\label{eq:conv_expansion}
+%  (J_\epsilon*m)(x) \;=\; m(x) + c_2\,\epsilon^2\,\Delta m(x) + O(\epsilon^4),\quad c_2 = \frac{m_2}{2d},\; m_2=\int_{\mathbb{R}^d}|z|^2 J(z)\,dz.
+% \end{equation}
+% Linearizing $\tanh$ around $m+h$ gives
+% \begin{equation}
+%  \partial_t m \;\approx\; -m + \tanh\big(\beta(m+h)\big) + \beta\,c_2\,\epsilon^2\,\operatorname{sech}^2\!\big(\beta(m+h)\big)\,\Delta m,
+% \end{equation}
+% an Allen--Cahn type equation with state-dependent diffusion coefficient $\beta\,c_2\,\epsilon^2\,\operatorname{sech}^2(\beta(m+h))$.
 
-\subsection{Lyapunov functional (free energy) and dissipation}
-Define the entropy density $\Phi:[-1,1]\to\mathbb{R}$ by $\Phi'(m)=\operatorname{artanh}(m)$, e.g.
-\begin{equation}\label{eq:entropy}
- \Phi(m) \;=\; \tfrac12\Big[(1+m)\ln(1+m)+(1-m)\ln(1-m)\Big] - \ln 2.
-\end{equation}
-Consider the functional
-\begin{equation}\label{eq:free_energy}
- \mathcal{F}[m] \;=\; \int_\Omega \Big( \Phi(m(x)) - \tfrac{\beta}{2}\,m(x)\,(J_\gamma*m)(x) - \beta h\,m(x) \Big)\,dx.
-\end{equation}
-Its $L^2$ variational derivative is
-\begin{equation}\label{eq:variational}
- \frac{\delta \mathcal{F}}{\delta m}(x) \;=\; \operatorname{artanh}(m(x)) - \beta\Big((J_\gamma*m)(x)+h\Big).
-\end{equation}
-Along solutions of \eqref{eq:nonlocal-recall},
-\begin{align}
- \frac{d}{dt}\,\mathcal{F}[m(t)]
- &= \int_\Omega \frac{\delta \mathcal{F}}{\delta m}(x)\,\partial_t m(t,x)\,dx \\
- &= \int_\Omega \Big( \operatorname{artanh}(m) - \beta(\mathcal{J}[m]+h) \Big)\,\Big( -m + \tanh\big(\beta(\mathcal{J}[m]+h)\big) \Big)\,dx.
-\end{align}
-Using that $\tanh$ and $\operatorname{artanh}$ are mutual inverses and strictly increasing, one has the pointwise inequality
-\[
- \big(\operatorname{artanh}(x) - y\big)\,\big(\tanh(y) - x\big) \;\le\; 0\quad \text{for all } x\in(-1,1),\; y\in\mathbb{R},
-\]
-with equality iff $x=\tanh(y)$. Hence $\tfrac{d}{dt}\,\mathcal{F}[m(t)] \le 0$, and equality holds precisely at equilibria satisfying $m = \tanh(\beta(\mathcal{J}[m]+h))$. Therefore, $\mathcal{F}$ is a Lyapunov functional, and solutions converge to the equilibrium set (LaSalle invariance principle).
-
-\subsection{Local (Allen--Cahn) limit as $\gamma\to0$}
-Assume $m$ is smooth at the interaction scale. For normalized, radially symmetric kernels one has the classical expansion
-\begin{equation}\label{eq:conv_expansion}
- (J_\gamma*m)(x) \;=\; m(x) + c_2\,\gamma^2\,\Delta m(x) + O(\gamma^4),\quad c_2 = \frac{m_2}{2d},\; m_2=\int_{\mathbb{R}^d}|z|^2 J(z)\,dz.
-\end{equation}
-Linearizing $\tanh$ around $m+h$ gives
-\begin{equation}
- \partial_t m \;\approx\; -m + \tanh\big(\beta(m+h)\big) + \beta\,c_2\,\gamma^2\,\operatorname{sech}^2\!\big(\beta(m+h)\big)\,\Delta m,
-\end{equation}
-an Allen--Cahn type equation with state-dependent diffusion coefficient $\beta\,c_2\,\gamma^2\,\operatorname{sech}^2(\beta(m+h))$.
-
-\subsection{Qualitative implications}
-Because $\widehat{J_\gamma}(k)$ is maximal at $k=0$, the first instability is spatially uniform. Thus, beyond the mean-field threshold (e.g., $\beta>1$ at $h\approx0$), dynamics tends to select homogeneous magnetized states $\pm m^*$ rather than finite-wavenumber patterns; interfaces connecting phases may form, with their width and motion modulated by the nonlocal interaction range.
+% \subsection{Qualitative implications}
+% Because $\widehat{J_\epsilon}(k)$ is maximal at $k=0$, the first instability is spatially uniform. Thus, beyond the mean-field threshold (e.g., $\beta>1$ at $h\approx0$), dynamics tends to select homogeneous magnetized states $\pm m^*$ rather than finite-wavenumber patterns; interfaces connecting phases may form, with their width and motion modulated by the nonlocal interaction range.
 
 
 
