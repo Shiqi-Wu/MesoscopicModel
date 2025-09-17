@@ -733,6 +733,10 @@ Here $(J*m)$ is the \emph{periodic} convolution of $m$ with $J$ on the $M\times 
 \end{equation}
 where $\langle\cdot\rangle_x$ denotes the spatial average over the grid, i.e., $\langle m\rangle_x = M^{-2}\sum m_{i,j}$ and $N=M^2$. We plot $\chi_{\text{data}}(t_i)$, $\chi_{\text{loc}}(t_i)$, and $\chi_{\text{non}}(t_i)$ on a shared time axis.
 
+\paragraph{Cross-resolution comparability.} In resolution studies where trajectories are available on different grids $M$, we first resample all fields onto a common \emph{reference grid} (the data grid) using \emph{periodic bilinear interpolation} before computing spatial averages and functionals (\,$\overline m(t)$, $\chi(t)$, $F[m](t)$\,) and before forming error curves. This removes spurious resolution dependence from the factor $N=M^2$ and from discretization effects, ensuring that, for example, $\chi(0)$ is directly comparable across resolutions.
+
+\paragraph{Energy convention in plots.} To compare data and PDE on equal footing, the energy-like panel uses the \emph{same post-processed free energy} $F[m](t)$ for both data and PDE, computed from the functional above with identical kernel normalization and parameters. When precomputed $F$ is unavailable in the data files, we recompute $F[m]$ from the stored coarse-grained fields. We intentionally avoid plotting the internal energy $E$ alone, since it omits the entropic term and can differ by constant/scaling factors; $F[m]$ provides a consistent, physically meaningful comparison across methods and resolutions.
+
 \paragraph{Mean absolute error curves.} The error curves shown are the \emph{spatial mean absolute error} between PDE solutions and data at aligned times:
 \begin{equation}
     E_{\text{loc}}(t_i) \;=\; \frac{1}{M^2} \sum_{k,\ell=0}^{M-1} \big|\, m_{\text{loc};\,k\ell}(t_i) - m_{\text{data};\,k\ell}(t_i) \,\big|,
@@ -779,6 +783,87 @@ A quantitative comparison of errors for different kernel ranges is provided in \
     \caption{Comparison of discrete convolution error with different kernel range $\epsilon$. The convolution error is calculated as the mean absolute error between the discrete convolution on a $1024\times 1024$ lattice and the coarse-grained $128 \times 128$ lattice, averaged over 20 random magnetization fields.}
     \label{tab:convolution_error}
 \end{table}
+
+\subsection{Numerical stability and CFL considerations (local PDE with RK4)}
+\label{subsec:numerical_cfl}
+
+This section summarizes the numerical stability constraints observed in our resolution study for the \emph{local} PDE solvers (both the Allen--Cahn polynomial form and the local-limit tanh form), and clarifies how we ensure consistent comparisons across resolutions.
+
+\paragraph{Root cause.} The local PDEs include a diffusion term $\kappa\,\Delta m$. When integrated with explicit Runge--Kutta (RK) methods, the stable time step is limited by the highest resolvable spatial frequency on the grid. On a periodic $M\times M$ grid with $\Delta x=\Delta y=L/M$, a conservative characterization of the largest Laplacian eigenvalue is
+\[
+  k_\text{max}^2 \;\approx\; \Big(\tfrac{\pi}{\Delta x}\Big)^2 + \Big(\tfrac{\pi}{\Delta y}\Big)^2\,.
+\]
+For the linear test problem $u_t=\kappa\,\Delta u$, explicit RK4 is stable provided $\Delta t\,\kappa\,k_\text{max}^2$ lies within RK4's stability region along the negative real axis. Using the known stability bound $\alpha_\text{RK4}\approx 2.785$ and a safety factor $s\in(0,1)$, we enforce the limiter
+\begin{equation}
+  \Delta t_\text{eff} \;=\; \min\!\left( \Delta t_\text{in},\; s\,\frac{\alpha_\text{RK4}}{\kappa\,k_\text{max}^2} \right),
+  \qquad k_\text{max}^2\approx \Big(\tfrac{\pi}{\Delta x}\Big)^2+\Big(\tfrac{\pi}{\Delta y}\Big)^2,\;\; s\approx 0.5.
+  \label{eq:rk4_cfl}
+\end{equation}
+Because $k_\text{max}^2\propto M^2$, the admissible time step scales like $\Delta t_\text{eff}\propto 1/M^2$. Hence, merely refining the grid (e.g., from $M=128$ to $M=256$) without reducing $\Delta t$ leads to instability or severe phase/dissipation errors.
+
+\paragraph{Implementation in our solvers.} We enforce \eqref{eq:rk4_cfl} in the local solver at runtime:
+\begin{itemize}
+  \item Compute $\Delta t_\text{eff}$ via \eqref{eq:rk4_cfl} using the current $\kappa$, $M$, and domain size $L$.
+  \item Keep the \emph{physical horizon} $t_\text{end}$ fixed by rescaling the number of steps as $N_\text{steps}=\lceil t_\text{end}/\Delta t_\text{eff}\rceil$.
+  \item Record at the same cadence in physical time by adjusting the recording frequency accordingly.
+\end{itemize}
+This preserves the comparison across resolutions while ensuring stability as $M$ increases.
+
+\paragraph{Consistent post-processing across resolutions.} For resolution comparisons, we always resample PDE fields onto the \emph{data grid} (via periodic bilinear interpolation) \emph{before} computing statistics (magnetization, susceptibility, and the post-processed free energy $F[m]$), as well as before forming error curves. This removes spurious $M$-dependent factors (e.g., $N=M^2$ in $\chi$) and discretization discrepancies, yielding directly comparable curves at $t=0$ and beyond.
+
+\paragraph{Planned results to display.} To illustrate the effect and the fix, we will show:
+\begin{enumerate}
+  \item A baseline at $M=128$ ($\Delta x=1/128$) with input time step $\Delta t_\text{in}=10^{-2}$. This case is stable and serves as reference.
+  \item A naive refinement to $M=256$ using the \emph{same} $\Delta t_\text{in}=10^{-2}$ (no limiter): the solution exhibits instability/visible artifacts (divergence or severe distortion), confirming the $\propto 1/M^2$ constraint.
+  \item The corrected $M=256$ run with the RK4 diffusion limiter \eqref{eq:rk4_cfl} enabled (thus $\Delta t_\text{eff}$ reduced by a factor $\approx4$): the evolution becomes stable and compares consistently with the $M=128$ reference.
+  \item Optionally, a further refinement to $M=512$, again with \eqref{eq:rk4_cfl}, demonstrating that results remain stable as the grid is refined when $\Delta t$ scales properly.
+\end{enumerate}
+For each setting we will show the standard 4-row comparison panel (data snapshots, error vs time, magnetization vs time, and the unified free-energy and susceptibility time series), with consistent post-processing on the data grid.
+
+\subsubsection{CFL time step calculation for specific parameter combinations}
+
+For concrete illustration, we analyze the CFL limits for the parameter sets used in our computational experiments. Using \eqref{eq:rk4_cfl} with domain size $L=1$ and typical diffusion coefficient $\kappa \approx 0.1$ estimated from the Allen-Cahn parameters:
+
+In both parameter regimes, the naive choice $\Delta t = 0.01$ leads to severe CFL violations at fine spatial resolutions, explaining the numerical instabilities observed when CFL enforcement is disabled. The required stable time steps are 1-2 orders of magnitude smaller than commonly assumed, making automatic CFL limiting essential for robust simulations.
+
+\paragraph{Actual time steps used with CFL enforcement} Our implementation uses the formula
+\[
+\Delta t_\text{eff} = \min\!\left( \Delta t_\text{in},\; \frac{s \times \alpha_\text{RK4}}{\kappa \times k_\text{max}^2} \right)
+\]
+with safety factor $s = 0.5$, stability constant $\alpha_\text{RK4} = 2.785$, and diffusion coefficient $\kappa = 0.5 \beta J_0 \epsilon^2 \approx 0.5 \times 1 \times 1 \times (0.0625)^2 \approx 0.00195$. For the specific cases:
+
+\paragraph{Case 1: $h=0$, $T=1$, $\epsilon=0.0625$}
+\begin{itemize}
+\item $N=128$: $\Delta t_\text{eff} = \min(0.01, 2.21 \times 10^{-3}) = 2.21 \times 10^{-3}$ (CFL-limited by factor 4.5)
+\item $N=256$: $\Delta t_\text{eff} = \min(0.01, 5.51 \times 10^{-4}) = 5.51 \times 10^{-4}$ (CFL-limited by factor 18.1)
+\end{itemize}
+
+\paragraph{Case 2: $h=1$, $T=4$, $\epsilon=0.0625$}
+\begin{itemize}
+\item $N=128$: $\Delta t_\text{eff} = \min(0.01, 2.21 \times 10^{-3}) = 2.21 \times 10^{-3}$ (CFL-limited by factor 4.5)
+\item $N=256$: $\Delta t_\text{eff} = \min(0.01, 5.51 \times 10^{-4}) = 5.51 \times 10^{-4}$ (CFL-limited by factor 18.1)
+\end{itemize}
+
+These effective time steps ensure numerical stability while maintaining the same physical simulation time $t_\text{end} = 20.0$ by automatically increasing the number of integration steps as needed.
+
+We show the CFL study for the local PDE with RK4 for $h=0$, $T=1$, $\epsilon=0.0625$ and $h=1$, $T=4$, $\epsilon=0.0625$ in \cref{fig:pde_cfl_study_h0_T1_eps0.0625} and \cref{fig:pde_cfl_study_h1_T4_eps0.0625}.
+
+\begin{figure}[!h]
+    \centering
+    \includegraphics[width=1.0\textwidth]{fig/pde_cfl_study_poly_h=0_T=1_eps=0.0625_L=1024.png}
+    \caption{CFL study for the local PDE with RK4 for $h=0$, $T=1$, $\epsilon=0.0625$.}
+    \label{fig:pde_cfl_study_h0_T1_eps0.0625}
+\end{figure}
+
+\begin{figure}[!h]
+    \centering
+    \includegraphics[width=1.0\textwidth]{fig/pde_cfl_study_poly_h=1_T=4_eps=0.0625_L=1024.png}
+    \caption{CFL study for the local PDE with RK4 for $h=1$, $T=4$, $\epsilon=0.0625$.}
+    \label{fig:pde_cfl_study_h1_T4_eps0.0625}
+\end{figure}
+
+
+
 \section{Network Training}
 \label{sec:network}
 

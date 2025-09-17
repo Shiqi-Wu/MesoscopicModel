@@ -59,6 +59,9 @@ class LocalPDEParams:
     source: str = "unknown"
     source_info: Dict[str, Any] = None
 
+    # Numerical control
+    enforce_cfl: bool = True
+
     def __post_init__(self):
         if self.source_info is None:
             self.source_info = {}
@@ -99,6 +102,10 @@ class ManualLocalProvider(LocalParameterProvider):
         self.extra = kwargs
 
     def get_params(self) -> LocalPDEParams:
+        # Avoid passing rhs_mode twice; extract it before forwarding extras
+        extras = dict(self.extra)
+        rhs_mode = str(extras.pop("rhs_mode", "poly"))
+        J0_val = float(extras.pop("J0", 1.0))
         return LocalPDEParams(
             kappa=self.kappa,
             r=self.r,
@@ -106,11 +113,11 @@ class ManualLocalProvider(LocalParameterProvider):
             beta=self.beta,
             h_field=self.h_field,
             M=self.M,
-            J0=float(self.extra.get("J0", 1.0)),
-            rhs_mode=str(self.extra.get("rhs_mode", "poly")),
+            J0=J0_val,
+            rhs_mode=rhs_mode,
             source="manual",
             source_info={"description": "Manual local PDE params"},
-            **self.extra,
+            **extras,
         )
 
     def get_initial_condition(self) -> Array:
@@ -265,9 +272,26 @@ def solve_local_pde(
     M = params.M
     Lx = params.Lx
     Ly = params.Ly
-    dt = params.dt if params.dt is not None else 0.01
+    dt_in = params.dt if params.dt is not None else 0.01
 
-    n_rec = params.steps // params.record_every
+    # Maintain same physical time horizon; optionally enforce RK4 stability for diffusion part
+    dx = Lx / M
+    dy = Ly / M
+    if getattr(params, "enforce_cfl", True):
+        # k_max^2 ≈ (π/dx)^2 + (π/dy)^2 on periodic grid
+        k2_max = (np.pi / dx) ** 2 + (np.pi / dy) ** 2
+        rk4_alpha = 2.785  # stability extent on negative real axis for RK4
+        safety = 0.5
+        dt_cfl = safety * rk4_alpha / max(params.kappa * k2_max, 1e-12)
+        dt = min(dt_in, dt_cfl)
+    else:
+        dt = dt_in
+
+    t_end = params.steps * dt_in
+    steps = int(np.ceil(t_end / dt))
+    record_every = max(1, params.record_every)
+
+    n_rec = steps // record_every
     times = np.empty(n_rec + 1, dtype=np.float32)
     traj = np.empty((n_rec + 1, M, M), dtype=np.float32)
 
@@ -281,11 +305,11 @@ def solve_local_pde(
     if show_progress:
         if getattr(params, "rhs_mode", "poly") == "tanh_local":
             print(
-                f"Local solver (tanh_local): dt={dt:.3e}, kappa={params.kappa:.3e}, J0={params.J0:.3e}"
+                f"Local solver (tanh_local): dt_in={dt_in:.3e}, dt_eff={dt:.3e}, steps={steps}, kappa={params.kappa:.3e}, J0={params.J0:.3e}"
             )
         else:
             print(
-                f"Local solver (poly): dt={dt:.3e}, kappa={params.kappa:.3e}, r={params.r:.3e}, u={params.u:.3e}"
+                f"Local solver (poly): dt_in={dt_in:.3e}, dt_eff={dt:.3e}, steps={steps}, kappa={params.kappa:.3e}, r={params.r:.3e}, u={params.u:.3e}"
             )
 
     def rhs(s: Array) -> Array:
@@ -302,7 +326,7 @@ def solve_local_pde(
             return params.kappa * lap + reaction
 
     start = time.time()
-    for step in range(params.steps):
+    for step in range(steps):
         if method.lower() == "euler":
             state = state + dt * rhs(state)
         elif method.lower() == "rk4":
@@ -316,15 +340,13 @@ def solve_local_pde(
 
         state = np.clip(state, -1.0, 1.0)
         t += dt
-        if (step + 1) % params.record_every == 0:
+        if (step + 1) % record_every == 0:
             times[k] = t
             traj[k] = state
             k += 1
-            if show_progress and (step + 1) % (params.record_every * 10) == 0:
+            if show_progress and (step + 1) % (record_every * 10) == 0:
                 elapsed = time.time() - start
-                print(
-                    f"  Step {step+1}/{params.steps}  t={t:.3f}  elapsed={elapsed:.1f}s"
-                )
+                print(f"  Step {step+1}/{steps}  t={t:.3f}  elapsed={elapsed:.1f}s")
 
     if show_progress:
         print(f"✅ Local PDE solution completed in {time.time() - start:.1f}s")
