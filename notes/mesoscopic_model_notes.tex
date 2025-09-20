@@ -14,7 +14,6 @@
 \usepackage{caption}
 \usepackage{subcaption}
 
-% Theorem-like environments
 \theoremstyle{plain}
 \newtheorem{theorem}{Theorem}[section]
 \newtheorem{lemma}[theorem]{Lemma}
@@ -993,58 +992,157 @@ Recall the physical mesoscopic PDE on the periodic domain $\Omega=\mathbb{T}^d$:
 	\partial_t m(t,x) \;=\; -\,m(t,x)\; +\; \tanh\!\big(\beta\,((J_\epsilon * m)(t,x) + h)\big),
 	\qquad m(0,\cdot)=m_0(\cdot).
 \]
-Here $J_\epsilon$ is nonnegative, even, and sum-normalized (discrete: unit-sum; continuum: $\int_\Omega J_\epsilon=1$). We have $m_0\in L^\infty(\Omega)$ with $\|m_0\|_{L^\infty}\le 1$. Also, $I = (J_\epsilon * m) \in [-1,1]$ whenever $m\in [-1,1]$.
+Here $m_0\in L^\infty(\Omega)$ with $\|m_0\|_{L^\infty}\le 1$.
 
-
-% We analyze the regularity and stability of the \emph{learned} generator that appears in the network training part, in the setting of the mesoscopic Ising/Glauber hydrodynamics. Throughout we work on the periodic domain $\Omega=\mathbb{T}^d$ ($d=2$ in our experiments). Let
-% \[
-% 	\partial_t m(t,\mathbf{x}) \;=\; L_\theta[m](t,\mathbf{x})
-% 	\;:=\; F_\theta\big( (J_\theta * m)(t,\mathbf{x}),\; m(t,\mathbf{x}),\; h \big),
-% 	\qquad m(0,\cdot)=m_0(\cdot),
-% \]
-% where $J_\theta$ is a nonnegative, sum-normalized interaction kernel and $F_\theta$ is a parametric nonlinearity. Two concrete parameterizations used in our implementation are:
-
-% - \textbf{Strong prior (physics-informed), cf.~\eqref{eq:strong_prior}}:
-% \[
-% 	F_\theta(I,m,h) = -A m + \tanh(B I + C m + D h),
-% \]
-% which reduces to the Glauber--Kac form when $(A,B,C,D)=(1,\beta,0,\beta)$ and $I=(J * m)$.
-
-% - \textbf{Black-box MLP}: $F_\theta(I,m,h)=\mathrm{MLP}_\theta(I,m,h)$ with smooth activations (e.g., $\tanh$), used in \S\ref{sec:network}.
-
-% We establish well-posedness, invariant bounds, and propagation of Sobolev regularity for this evolution, and provide stability/error estimates comparing the learned generator $L_\theta$ with the physical generator
-% \[
-% 	L_\ast[m] \;=\; -m + \tanh\!\big( \beta (J_\epsilon * m + h) \big),
-% \]
-% cf.~\eqref{eq:hydro}.
 
 
 We aim to learn networks to approximate the target dynamics/generator
 $$
 	\partial_t m = \mathcal{F}[m] = \mathcal{F}_\theta\big(\mathcal{I}_{\theta\prime}[m], m, h \big),
 $$
-where the interaction term is $\mathcal{I}_{\theta\prime}[m]=(J_{\theta\prime}*m)$; more generally $\mathcal{I}_{\theta\prime}$ can be the state-dependent operator in \S\ref{subsec:state_dependent_J}.
+where the interaction term is $\mathcal{I}_{\theta\prime}[m]=J_{\theta\prime}*m$; more generally $\mathcal{I}_{\theta\prime}$ can be the state-dependent operator in \S\ref{subsec:state_dependent_J}. In the following, we omit the dependence on $h$, and suppose all the dynamics are under the same external field $h$.
 
-We now specify different priors. We specify the priors on $(\mathcal{F}_\theta,J_{\theta\prime})$.
+We now specify the priors on $(\mathcal{F}_\theta,J_{\theta\prime})$.
 \begin{itemize}
-	\item For nonlinearities, we consider two priors:
+	\item For nonlinear functions $\mathcal{F}_\theta$, we consider two priors:
 	      \begin{itemize}
-		      \item \textbf{Strong prior.} $\mathcal{F}_\theta$ is a neural network $\mathrm{MLP}_\theta(I,m,h)$; $J$ is learnable and may be a local convolution kernel $K_\theta(x-y)$ or a state-dependent operator $K_\theta(x,y; m)$ (normalized as in \eqref{eq:state_dep_op}).
-		      \item \textbf{Weak prior.} $\mathcal{F}_\theta$ is a neural network $\mathrm{MLP}_\theta(I,m,h)$ (we discuss some specific structures in the following); $J$ is learnable and may be a local convolution kernel $K_\theta(x-y)$ or a state-dependent operator $K_\theta(x,y; m)$ (normalized as in \eqref{eq:state_dep_op}).
+		      \item \textbf{Strong prior.} $\mathcal{F}_\theta = -A m + B \tanh(C \mathcal{I}_{\theta\prime}[m] + D)$, where $\mathcal{I}_{\theta\prime}[m]=J_{\theta\prime}*m$.
+		      \item \textbf{Weak prior.} $\mathcal{F}_\theta$ is a neural network $\mathrm{MLP}_\theta(I,m)$ (we discuss some specific structures in the following). % $J_{\theta\prime}$ is learnable and may be a local convolution kernel $K_\theta(x-y)$ or a state-dependent operator $K_\theta(x,y; m)$ (normalized as in \eqref{eq:state_dep_op}).
 	      \end{itemize}
-	\item For kernels, we consider three types:
+	\item For kernels $J_{\theta\prime}$, we consider three types (all with entries parameterized by logits, normalized by softmax):
 	      \begin{itemize}
-		      \item \textbf{Local kernel.} $J_{\theta\prime}$ is a local convolution kernel $K_\theta(x-y)$, which is a fully learnable $K\times K$ kernel with entries parameterized by logits, normalized by softmax. Similar to CNN.
-		      \item \textbf{Non-local kernel.} $J_{\theta\prime}$ is a non-local convolution kernel $K_\theta(x,y)$, which is a fully learnable $K\times K$ kernel with entries parameterized by logits, normalized by softmax.
-		      \item \textbf{State-dependent kernel, nonlinear operator.} $J_{\theta\prime}$ is a state-dependent operator $K_\theta(x,y; m)$, which is a fully learnable $K\times K$ kernel with entries parameterized by logits, normalized by softmax. Similar to self-attention.
+		      \item \textbf{Local kernel.} $J_{\theta\prime}$ is a local convolution kernel $J_{\theta\prime}(x-y)$, Similar to CNN.
+		      \item \textbf{Non-local kernel.} $J_{\theta\prime}$ is a non-local convolution kernel $J_{\theta\prime}(x,y)$.
+		      \item \textbf{State-dependent kernel, nonlinear operator.} $J_{\theta\prime}$ is a state-dependent operator $J_{\theta\prime}(x,y; m)$. %Similar to attention.
 	      \end{itemize}
+
 \end{itemize}
 
+\begin{remark}[Regularity: Finite-energy bound]
+	Let $1\le p\le\infty$ and $\tfrac1p+\tfrac1q=1$.
+	Assume the kernel satisfies the uniform $L^q$ bound
+	\begin{equation}\label{eq:finite_energy_pq}
+		\sup_{x\in\Omega}\|J(x,\cdot)\|_{L^q(\Omega)}<\infty .
+	\end{equation}
+	Then, by Hölder’s inequality,
+	\[
+		|(J*m)(x)|
+		\le \|J(x,\cdot)\|_{L^q}\,\|m\|_{L^p}
+		\quad\Rightarrow\quad
+		\|J*m\|_{L^\infty}
+		\le \Bigl[\sup_{x\in\Omega}\|J(x,\cdot)\|_{L^q}\Bigr]\|m\|_{L^p}.
+	\]
+	\textit{Specifically}, taking $p=\infty$ and $q=1$ recovers the $L^\infty$–$L^1$
+	form used above:
+	\[
+		\|J*m\|_{L^\infty}
+		\le \Bigl[\sup_{x\in\Omega}\!\int_\Omega |J(x,y)|\,dy\Bigr]\|m\|_{L^\infty}.
+	\]
+	If \eqref{eq:finite_energy_pq} fails, e.g., $J(x,y)=|x-y|^{-1}$ on $\Omega=\mathbb{T}$, then
+	for $m\equiv1$ the integral $\int_\Omega |J(x_0,y)|\,dy$ diverges for every
+	$x_0$, so $J*m$ is not even pointwise finite.
+\end{remark}
 
-We next specify constraints/regularity on $(\mathcal{F}_\theta,J_{\theta\prime})$ (e.g., positivity/normalization of $J_{\theta\prime}$, locally $p$-Lipschitz $\mathcal{F}_\theta$, and inward-pointing conditions) to ensure well-posedness and stability of the learned flow.
+\begin{remark}[Identifiability]
+	We separate two distinct issues.
+
+	\smallskip
+	\noindent\textbf{(i) Normalization and scale.}
+	To eliminate the trivial scaling freedom
+	\((\beta,J)\mapsto (c\beta,J/c)\),
+	we impose an $L^{q}$–type normalization
+	\[
+		\|J_{\theta'}(x,\cdot)\|_{L^{q}(\Omega)} = 1 ,
+	\]
+	for some convenient $q\ge 1$, e.g., when $q=1$, we have $\int_\Omega J_{\theta'}(x,y)\,dy = 1$, which makes $J_{\theta'}*m$ an average of $m$.
 
 
-\paragraph{Regularity and well-posedness.}
+	\emph{Note that} this fixes only the overall scale: it does not control
+	singularities or oscillations of $J$. Hence we still require the finite–energy bound \eqref{eq:finite_energy_pq}
+	to guarantee that $J_{\theta'}*m$ is well defined.
+	For example, on $\Omega=\mathbb T$,
+	\[
+		J(x,y)
+		:= \frac{|x-y|^{-1/2}}
+		{\displaystyle \int_\Omega |x-z|^{-1/2}\,dz}
+		\quad\Rightarrow\quad
+		\int_\Omega J(x,y)\,dy = 1
+	\]
+	but
+	\[
+		\int_\Omega |J(x,y)|\,dy
+		= \frac{\displaystyle \int_\Omega |x-y|^{-1/2}\,dy}
+		{\displaystyle \int_\Omega |x-z|^{-1/2}\,dz}
+		= \infty,
+	\]
+	so normalization alone does not prevent divergence.
+
+	After this step the kernel is identified only
+	\emph{up to a global sign}, i.e.\ we know its
+	magnitude but not its orientation.
+
+	\smallskip
+	\noindent\textbf{(ii) Global sign.}
+	Because $\tanh$ is odd,
+	\[
+		B\,\tanh(C\,\cdot)
+		= (-B)\,\tanh((-C)\,\cdot),
+	\]
+	so $(B,C,J_{\theta'})$, $(B,-C,-J_{\theta'})$ and $(-B,-C, J_{\theta'})$
+	define the same operator, simply omitting $D$.
+	Normalization alone cannot break this symmetry. A simple constraint such as
+	\[
+		\int_\Omega J(x,y)\,dy > 0
+	\]
+	only fixes the global sign for identifiability and does not allow one to
+	distinguish whether the underlying interaction is ferromagnetic or antiferromagnetic.
+
+	If we do not accept that the learned pair
+	represents only the equivalence class
+	$\{(\mathcal F,J),(-\mathcal F,-J)\}$,
+	we can impose a sign convention to fix the global orientation of $J$.
+	For the strong prior this can be enforced by
+	\[
+		B>0 \;\text{and}\; C>0
+	\]
+	(singly fixing one is not enough).
+	For the weak prior one may instead require a positive response of
+	$\mathcal F_\theta$ to its interaction input, e.g.
+	\[
+		\partial_I \mathcal F_\theta(I_0,m_0) > 0
+		\quad
+	\]
+	which similarly pins down the overall orientation of $J$
+	without constraining its pointwise sign. (but I'm not sure this is a reasonable solution).
+
+
+
+	\smallskip
+	These identifiability conditions are independent of
+	the regularity assumption and ensure that the learned
+	dynamics are unique up to this explicitly chosen
+	sign convention.
+\end{remark}
+
+\begin{remark}[General properties of the interaction kernel]
+	\begin{itemize}
+		\item \textbf{Sign.}
+		      The kernel $J$ may take positive, negative, or mixed values,
+		      depending on the physical system:
+		      predominantly positive for ferromagnetic couplings,
+		      predominantly negative or oscillatory for antiferromagnetic or
+		      spin–glass–type interactions.
+
+		\item \textbf{Symmetry.}
+		      Symmetry $J(x,y)=J(y,x)$ is natural when interactions are pairwise
+		      and the Hamiltonian depends only on $\tfrac12\!\int\!J(x,y)m(x)m(y)$,
+		      but it is not required in general.
+		      Non-symmetric $J$ can model directed or non-reciprocal interactions.
+	\end{itemize}
+\end{remark}
+
+
+\paragraph{Roadmap: Regularity and well-posedness.}
 Given an evolution $\partial_t m = \mathcal{F}[m]$ on a chosen function space $X$ (e.g., $L^\infty(\Omega)$), the common properties one needs to establish are:
 
 \begin{itemize}
@@ -1053,18 +1151,14 @@ Given an evolution $\partial_t m = \mathcal{F}[m]$ on a chosen function space $X
 	      there exists a nonempty closed set $B\subseteq X$ such that the solution semigroup $S_t$ generated by $\mathcal{F}$ satisfies $S_t(B)\subseteq B$ for all $t\ge 0$ (forward invariance).
 
 	\item \textbf{Well-posedness (existence/uniqueness/continuous dependence):}
-	      If $\mathcal{F}:X\to X$ is locally $p$-Lipschitz in the sense of \Cref{def:locally-p-Lip} (or globally $L^p$-Lipschitz on a forward invariant set $B\subseteq X$), then the IVP admits a unique (local, respectively global on $B$) solution and the solution map $S_t$ depends Lipschitz-continuously on the initial data (with respect to $\|\cdot\|_{L^p}$).
-
-
-	      %   \item \textbf{Propagation of regularity:} 
-	      %   If $m_0\in H^s$ and $\mathcal{F}$ together with convolution/composition closes in $H^s$, then $m(t)\in C([0,T];H^s)\cap C^1([0,T];H^s)$.
+	      If $\mathcal{F}:X\to X$ is locally $p$-Lipschitz in the sense of \Cref{def:locally-p-Lip} (or globally $L^p$-Lipschitz on a forward invariant set $B\subseteq X$), then the IVP admits a unique (local, respectively global on $B$) solution and the solution map $S_t$ depends Lipschitz-continuously on the initial data (with respect to $\|\cdot\|_{L^p}$). The Lipschitz continuity of $\mathcal{F}$ and $J$ also ensures that the solution map $S_t$ is continuous on $B$.
 
 	\item \textbf{Stability/error propagation:}
 	      If both vector fields are $L^p$-Lipschitz on a forward invariant set $B\subseteq X$ with constant $L$ and the generator discrepancy $\varepsilon_*:=\sup_{m\in B}\|\mathcal{L}_\theta[m]-\mathcal{L}_*[m]\|_{L^p}$ is finite, then, by Grönwall's inequality, for all $t\in[0,T]$,
 	      $\|m_\theta(t)-m_*(t)\|_{L^p} \le (\varepsilon_*/L)\,(e^{L t}-1)$.
 
 	\item \textbf{Lyapunov/energy dissipation (if available):}
-	      Exhibiting a functional that decreases monotonically along solutions provides evidence of stability and convergence. Only for analytical solutions, not sure the relationship with the network.
+	      Exhibiting a functional that decreases monotonically along solutions provides evidence of stability and convergence. Only for analytical solutions, I am not sure about the relationship with the network.
 \end{itemize}
 
 
@@ -1087,224 +1181,535 @@ Given an evolution $\partial_t m = \mathcal{F}[m]$ on a chosen function space $X
 	where $|\cdot|_2$ is the Euclidean norm in $\mathbb{R}^n$ (any two norms in finite dimensions are equivalent, yielding equivalent norms on $L^p(\Omega)^n$). For $p=\infty$, $\|\cdot\|_{L^{\infty}}$ is the essential supremum.
 \end{remark}
 
-% Local Lipschitz implies continuity; global Lipschitz implies linear growth bound.
 
-\paragraph{Assumptions on kernels.}
-We assume $J_\theta\in L^1(\Omega)$, $J_\theta\ge 0$, $\int_{\Omega} J_\theta \,d\mathbf{x} = 1$, and $J_\theta$ is even. In the discrete implementation, the learnable kernels (softmax/Gaussian/elliptical Gaussian) are nonnegative and sum to one by construction; in the continuum, these imply that convolution by $J_\theta$ is a bounded linear operator on $L^p(\Omega)$ for all $p\in[1,\infty]$ and on $H^s(\Omega)$ for all $s\in\mathbb{R}$.
-
-\paragraph{Assumptions on nonlinearities.}
-For the strong-prior model, $F_\theta$ is globally Lipschitz in $(I,m)$ because $\tanh$ is 1-Lipschitz and the dependence is affine. For MLPs with smooth bounded activations (e.g., $\tanh$), $F_\theta$ is locally Lipschitz everywhere and globally Lipschitz on any bounded set (Rademacher’s theorem in finite dimensions). Since solutions will remain in $(-1,1)$ (see below), this suffices for global existence.
-
-
-
-
-
-% \begin{theorem}[Global classical well-posedness, invariant region, and equilibria]
-% 	\label{thm:nonlocal_wellposed}
-% 	Let $d\ge 1$ and $s>\tfrac d2$. Assume $J_\epsilon\in L^1(\Omega)$ is nonnegative, even, and $\|J_\epsilon\|_{L^1}=1$. If $m_0\in H^s(\Omega)$ with $\|m_0\|_{L^\infty}\le 1$, then the nonlocal PDE above admits a unique global solution
-% 	\[
-% 		m\in C\big([0,\infty);H^s(\Omega)\big)\cap C^1\big([0,\infty);H^s(\Omega)\big),
-% 	\]
-% 	and the interval $(-1,1)$ is positively invariant: $\|m(t,\cdot)\|_{L^\infty}<1$ for all $t>0$. Moreover, equilibria are exactly the solutions of the nonlinear fixed-point equation
-% 	\[
-% 		m^*(x) \;=\; \tanh\!\big(\beta\,((J_\epsilon * m^*)(x) + h)\big).
-% 	\]
-% \end{theorem}
-
-% \begin{proof}[Proof (sketch)]
-% 	Convolution by $J_\epsilon\in L^1$ is bounded on $H^s$ and $L^\infty$. For $s>\tfrac d2$, $H^s$ is a Banach algebra, and composition with smooth functions with bounded derivatives on a compact range preserves $H^s$. Since $\tanh$ is smooth and globally 1-Lipschitz, the right-hand side maps $H^s\cap L^\infty$ to $H^s$ and is locally Lipschitz. Picard--Lindel"of in $H^s$ yields local existence/uniqueness; invariance of $(-1,1)$ follows by comparison: at $m=\pm1$, the vector field points inward as $-\operatorname{sign}(m)+\tanh(\cdot)$ has opposite sign and $|\tanh|<1$. The uniform bound prevents blow-up and extends solutions globally. The equilibrium characterization is just $\partial_t m=0$.
-% \end{proof}
-
-% \paragraph{Remark (mild solutions in $L^\infty$).} If only $m_0\in L^\infty(\Omega)$ with $\|m_0\|_{L^\infty}\le 1$, then the same argument (working in $L^\infty$) gives a unique global mild solution $m\in C([0,\infty);L^\infty)$ with the invariant range $(-1,1)$.
-
-\subsection{Model designs and Lipschitz conditions}
+\subsection{Invariant region and Design of nonlinear functions $\mathcal{F}_\theta$}
 \label{subsec:designs_lipschitz}
 
-We study two parameterized generator forms and give easy-to-check conditions for Lipschitz continuity and invariance of $[-1,1]$.
+% We study two parameterized generator forms and give easy-to-check conditions for invariant region.
 
-\paragraph{Design A (general decomposition).} Let
-\[
-	F_\theta(I,m,h) \;=\; -A\,m \; +\; G_\theta(I,m,h),\quad A>0,
-\]
-with a nonnegative, unit-sum kernel $J_\theta$ so that $I=J_\theta * m\in[-1,1]$ whenever $m\in[-1,1]$.
-
-\begin{proposition}[Lipschitz on the invariant cube]
-	\label{prop:designA_lip}
-	If $G_\theta$ is $C^1$ and its partial derivatives are bounded on $I\in[-1,1]$, $m\in[-1,1]$, then on the cube $\{|I|\le1,|m|\le1\}$
+\begin{condition}[Invariant interval]\label{cond:invariant}
+	Suppose $\mathcal{F}(I,m)$ satisfies
 	\[
-		\big|F_\theta(I_1,m_1,h)-F_\theta(I_2,m_2,h)\big|
-		\;\le\; \Big(A + \sup(|\partial_m G_\theta|) + \sup(|\partial_I G_\theta|)\Big)\,\big(|m_1-m_2|+|I_1-I_2|\big).
+		\mathcal{F}(I,1)\le 0
+		\quad\text{and}\quad
+		\mathcal{F}(I,-1)\ge 0
+		\qquad\text{for all } I\in[-1,1].
 	\]
-	Consequently, the operator $L_\theta[m]=F_\theta(J_\theta*m,m,h)$ is globally Lipschitz on $\{\|m\|_{L^\infty}\le1\}$ with constant $\le A+\sup(|\partial_m G_\theta|)+\sup(|\partial_I G_\theta|)$, using $\|J_\theta\|_{L^1}=1$.
+	Then the closed set $[-1,1]$ is positively invariant.
+\end{condition}
+
+
+% We just need to ensure that the invariant region is a subset of $[-1,1]$, which means $F(I, 1) \le 0$ and $F(I, -1) \ge 0$ for all $I \in [-1,1]$.
+
+
+
+\paragraph{Strong prior.} Let $ \mathcal{F}_\theta(I,m) \;=\; -A\,m + B \tanh\big( CI + D \big),\quad A>0, B>0, C>0.$
+
+The invariant region is $[-1,1]$ if $A > B$ and $C > 0$.
+
+
+
+\paragraph{Weak prior.} Let $ \mathcal{F}_\theta(I,m)$ be any MLP, we can add a boundary condition \ref{cond:invariant} to ensure the invariant region is $[-1,1]$.
+
+Specifically, we may take $\mathcal{F}_\theta(I,m) = -Am + (1 - m^2) H_\theta(I,m),$ where $H_\theta$ is any MLP, $A>0$. This form is a hard constraint.
+
+Then $\mathcal{F}(I, 1) = -A < 0$ and $\mathcal{F}(I, -1) = A > 0$, which means the invariant region is $[-1,1]$.
+
+% \begin{proposition}[Lipschitz on the invariant cube]
+% 	\label{prop:designA_lip}
+% 	If $G_\theta$ is $C^1$ and its partial derivatives are bounded on $I\in[-1,1]$, $m\in[-1,1]$, then on the cube $\{|I|\le1,|m|\le1\}$
+% 	\[
+% 		\big|F_\theta(I_1,m_1,h)-F_\theta(I_2,m_2,h)\big|
+% 		\;\le\; \Big(A + \sup(|\partial_m G_\theta|) + \sup(|\partial_I G_\theta|)\Big)\,\big(|m_1-m_2|+|I_1-I_2|\big).
+% 	\]
+% 	Consequently, the operator $L_\theta[m]=F_\theta(J_\theta*m,m,h)$ is globally Lipschitz on $\{\|m\|_{L^\infty}\le1\}$ with constant $\le A+\sup(|\partial_m G_\theta|)+\sup(|\partial_I G_\theta|)$, using $\|J_\theta\|_{L^1}=1$.
+% \end{proposition}
+
+% \begin{proof}[Proof (sketch)]
+% 	Mean-value theorem plus bounded derivatives; convolution is an $L^p$-contraction for unit-sum kernels.
+% \end{proof}
+
+% \paragraph{Invariance (sufficient condition).} The Nagumo condition
+% \[
+% 	F_\theta(I,1,h)\le 0\ \text{and}\ F_\theta(I,-1,h)\ge 0\quad \forall\ I\in[-1,1],\ h\in\mathbb{R}
+% \]
+% is sufficient for $[-1,1]$ to be positively invariant. Two convenient realizations:
+% \begin{itemize}
+% 	\item Boundary-damped form: $F_\theta(I,m,h)=-A m + (1-m^2)\,H_\theta(I,m,h)$ with $A>0$. Then $F_\theta(I,\pm1,h)=\mp A$.
+% 	\item Envelope bound: ensure $\sup_{|I|,|m|\le1}|G_\theta(I,m,h)|\le A-\varepsilon$ for some $\varepsilon>0$.
+% \end{itemize}
+
+
+\subsection{Lipschitz of $J$ and $F$}
+\begin{proposition}[Local $p$--Lipschitz continuity for $J_{\theta\prime}$]\label{prop:Lip-simple}
+	Let $1 \le p \le \infty$ and let $q$ be its Holder conjugate, $1/p+1/q=1$.
+	For $u\in L^p(\Omega)$ define the nonlinear integral operator
+	\[
+		J[u](x):=\int_\Omega K(x,y;u)\,u(y)\,dy,\qquad x\in\Omega .
+	\]
+	Assume the kernel $K(\cdot,\cdot;u)$ is measurable and there exist
+	constants $C_K>0$, $L_K>0$, and $\delta(u)>0$ such that for all $v$ with
+	$\|u-v\|_{L^p}<\delta(u)$,
+	\begin{equation}\label{eq:bounds}
+		\text{\normalfont(A1: Boundedness) } \sup_{x\in\Omega}\|K(x,\cdot;u)\|_{L^{q}(\Omega)}\le C_K,
+		\qquad
+		\sup_{x\in\Omega}\|K(x,\cdot;u)\|_{L^{q'}(\Omega)}\le C_K,            \\
+	\end{equation}
+	\begin{equation}\label{eq:LipK}
+		\text{\normalfont(A2: Lipschitz of $K$) } \sup_{x\in\Omega}\|K(x,\cdot;u)-K(x,\cdot;v)\|_{L^{q'}(\Omega)}
+		\le L_K\,\|u-v\|_{L^p(\Omega)}.
+	\end{equation}
+	Note that, for identifiability, we may impose an $L^{q}$-normalization
+	$\|K(x,\cdot;u)\|_{L^{q}}=1$ for all $x$ in space $\Omega$ for each $u$.
+	Hence the first requirement in \eqref{eq:bounds} is automatically satisfied.
+	However, the second bound in \eqref{eq:bounds} must still be assumed,
+	because fixing the $L^{p}$ (or $L^{q}$) norm to $1$ does not in general
+	control the $L^{q'}$ norm.
+
+	Then $J:L^p(\Omega)\to L^\infty(\Omega)$ is locally $p$--Lipschitz at $u$ and
+	\[
+		\|J[u]-J[v]\|_{L^\infty(\Omega)}
+		\;\le\; \Big(L_K\,\|u\|_{L^p(\Omega)}+C_K\Big)\,\|u-v\|_{L^p(\Omega)}
+		\quad \text{whenever }\ \|u-v\|_{L^p}<\delta(u).
+	\]
 \end{proposition}
 
-\begin{proof}[Proof (sketch)]
-	Mean-value theorem plus bounded derivatives; convolution is an $L^p$-contraction for unit-sum kernels.
+\begin{proof}
+	Fix $x\in\Omega$ and write
+	\[
+		\begin{aligned}
+			J[u](x)-J[v](x)
+			 & =\int_\Omega K(x,y;u)\,u(y)\,dy-\int_\Omega K(x,y;v)\,v(y)\,dy            \\
+			 & =\underbrace{\int_\Omega\big(K(x,y;u)-K(x,y;v)\big)\,u(y)\,dy}_{=:T_1(x)}
+			+\underbrace{\int_\Omega K(x,y;v)\,\big(u(y)-v(y)\big)\,dy}_{=:T_2(x)}.
+		\end{aligned}
+	\]
+	For $T_1$, apply Hölder with $1/p+1/q'=1$ and \eqref{eq:LipK}:
+	\[
+		|T_1(x)|
+		\le \|K(x,\cdot;u)-K(x,\cdot;v)\|_{L^{q'}(\Omega)}\,\|u\|_{L^p(\Omega)}
+		\le L_K\,\|u\|_{L^p}\,\|u-v\|_{L^p}.
+	\]
+	For $T_2$, apply Hölder with the same exponents and the uniform bound in
+	\eqref{eq:bounds}:
+	\[
+		|T_2(x)|
+		\le \|K(x,\cdot;v)\|_{L^{q'}(\Omega)}\,\|u-v\|_{L^p(\Omega)}
+		\le C_K\,\|u-v\|_{L^p}.
+	\]
+	Taking the supremum over $x\in\Omega$ and adding the two estimates gives
+	\[
+		\|J[u]-J[v]\|_{L^\infty}
+		\le \big(L_K\,\|u\|_{L^p}+C_K\big)\,\|u-v\|_{L^p},
+	\]
+	which proves the local $p$--Lipschitz property.
 \end{proof}
 
-\paragraph{Invariance (sufficient condition).} The Nagumo condition
-\[
-	F_\theta(I,1,h)\le 0\ \text{and}\ F_\theta(I,-1,h)\ge 0\quad \forall\ I\in[-1,1],\ h\in\mathbb{R}
-\]
-is sufficient for $[-1,1]$ to be positively invariant. Two convenient realizations:
-\begin{itemize}
-	\item Boundary-damped form: $F_\theta(I,m,h)=-A m + (1-m^2)\,H_\theta(I,m,h)$ with $A>0$. Then $F_\theta(I,\pm1,h)=\mp A$.
-	\item Envelope bound: ensure $\sup_{|I|,|m|\le1}|G_\theta(I,m,h)|\le A-\varepsilon$ for some $\varepsilon>0$.
-\end{itemize}
+\begin{remark}[Finite--energy as a standard special case]
+	For $p=\infty$ (so $q=1$), the bound \eqref{eq:bounds} reduces to the
+	finite--energy condition
+	$\sup_{x}\int_\Omega |K(x,y;u)|\,dy<\infty$, and \eqref{eq:LipK} becomes
+	$\sup_x\int_\Omega |K(x,y;u)-K(x,y;v)|\,dy\le L_K\|u-v\|_{L^\infty}$.
+\end{remark}
 
-\paragraph{Design B (physics-informed $\tanh$).} Let
-\[
-	F_\theta(I,m,h) \;=\; -A\,m \; +\; \tanh\big(B I + C m + D h\big),\quad A>0.
-\]
 
-\begin{proposition}[Lipschitz and invariance]
-	\label{prop:designB_lip}
-	On $|I|,|m|\le1$, $F_\theta$ is globally Lipschitz with constant $\le |A|+|C|+|B|$ since $|\tanh'|\le1$ and $\|J_\theta\|_{L^1}=1$. Moreover, if $A\ge 1$, then $F_\theta(I,1,h)\le -A+1\le0$ and $F_\theta(I,-1,h)\ge A-1\ge0$, so $[-1,1]$ is invariant. If instead one uses an amplitude $E$ as $F_\theta=-A m + E\,\tanh(\cdot)$, it suffices to take $A\ge |E|$.
+\begin{proposition}[Local $p$--Lipschitz continuity of $\mathcal F\!\circ\! J$]\label{prop:Lip-FJ}
+	Let $1\le p\le\infty$ and let $q$ be its Hölder conjugate $1/p+1/q=1$.
+	For $u\in L^p(\Omega)$ define
+	\[
+		J[u](x):=\int_\Omega K(x,y;u)\,u(y)\,dy,\qquad
+		\mathcal F[u](x):=F\big(J[u](x),\,u(x)\big),
+	\]
+	where $F:\mathbb R\times\mathbb R\to\mathbb R$ is a Carathéodory function
+	(measurable in $x$ and continuous in the other variables).
+
+	Assume the kernel $K$ satisfies the hypotheses of
+	Proposition~\ref{prop:Lip-simple} (boundedness and Lipschitz continuity)
+	so that $J:L^p(\Omega)\to L^\infty(\Omega)$ is locally $p$–Lipschitz.
+	Suppose further that $F$ satisfies
+	\begin{equation}\label{eq:F-Lip}
+		\text{\normalfont(A3: Lipschitz of $F$)}\qquad
+		\bigl|F(I_1,m_1)-F(I_2,m_2)\bigr|
+		\le L_F\bigl(|I_1-I_2|+|m_1-m_2|\bigr)
+	\end{equation}
+	for some constant $L_F>0$ and all $I_i,m_i\in[-R,R]$ for some $R>0$
+	that bounds $J[u](x)$ and $u(x)$ on the neighborhood under consideration.
+
+	Then the composite mapping
+	\[
+		\mathcal F:L^p(\Omega)\longrightarrow L^\infty(\Omega),
+		\qquad
+		\mathcal F[u](x)=F(J[u](x),u(x)),
+	\]
+	is locally $p$–Lipschitz at $u$, and whenever $\|u-v\|_{L^p}<\delta(u)$,
+	\begin{equation}\label{eq:FJ-Lip}
+		\|\mathcal F[u]-\mathcal F[v]\|_{L^\infty(\Omega)}
+		\;\le\;
+		L_F\Bigl[\,\bigl(L_K\|u\|_{L^p}+C_K\bigr)+1\Bigr]
+		\,\|u-v\|_{L^p(\Omega)}.
+	\end{equation}
 \end{proposition}
 
-\begin{proof}[Proof (sketch)]
-	For the Lipschitz bound, apply $|\tanh'|\le1$ and the triangle inequality. For invariance, use $|\tanh|\le1$ to bound the boundary values at $m=\pm1$.
+\begin{proof}
+	Let $u,v\in L^p(\Omega)$ with $\|u-v\|_{L^p}<\delta(u)$.
+	For a.e.\ $x\in\Omega$,
+	\[
+		\bigl|\mathcal F[u](x)-\mathcal F[v](x)\bigr|
+		=\bigl|F(J[u](x),u(x))-F(J[v](x),v(x))\bigr|.
+	\]
+	Using the Lipschitz property \eqref{eq:F-Lip} of $F$,
+	\[
+		\le L_F\Bigl(
+		|J[u](x)-J[v](x)| + |u(x)-v(x)|
+		\Bigr).
+	\]
+	Taking essential supremum over $x$ gives
+	\[
+		\|\mathcal F[u]-\mathcal F[v]\|_{L^\infty}
+		\le L_F\Bigl(
+		\|J[u]-J[v]\|_{L^\infty}
+		+ \|u-v\|_{L^\infty}
+		\Bigr).
+	\]
+	Because $p\ge 1$, $\|u-v\|_{L^\infty}\le \|u-v\|_{L^p}$ on finite-measure $\Omega$.
+	By Proposition~\ref{prop:Lip-simple},
+	\[
+		\|J[u]-J[v]\|_{L^\infty}
+		\le \bigl(L_K\|u\|_{L^p}+C_K\bigr)\|u-v\|_{L^p}.
+	\]
+	Combine the two bounds to obtain \eqref{eq:FJ-Lip}.
 \end{proof}
 
-\subsection{State-dependent nonlocal operator and dynamics}
-\label{subsec:state_dependent_J}
 
-We allow the interaction kernel to depend on the evolving field. Let $\Omega=\mathbb{T}^d$ and $u:\Omega\to\mathbb{R}$. Consider a measurable, nonnegative kernel
-\[
-	K: \Omega\times\Omega\times\mathbb{R} \to [0,\infty),\qquad (x,y,\xi)\mapsto K(x,y;\xi),
-\]
-and define, for a given state $u$, the (pointwise) normalizer and the normalized, state-dependent nonlocal operator
-\begin{equation}
-	Z_u(x) \;:=\; \int_{\Omega} K\big(x,y; u\big)\,dy\;>\;0,\qquad
-	I_u[u](x) \;:=\; \frac{\displaystyle \int_{\Omega} K\big(x,y; u\big)\,u(y)\,dy}{\displaystyle Z_u(x)}.
-	\label{eq:state_dep_op}
-\end{equation}
-If $K$ is already normalized in $y$ for each $(x,\xi)$, i.e., $\int_{\Omega}K(x,y;\xi)\,dy\equiv1$, then $I_u[u](x)=\int_{\Omega}K(x,y;u)\,u(y)\,dy$.
+\begin{corollary}[Lipschitz conditions for the two priors]\label{cor:priors-Lip}
+	Let $J_{\theta'}:L^p(\Omega)\to L^\infty(\Omega)$ satisfy the assumptions of
+	Proposition~\ref{prop:Lip-simple}, so that $u\mapsto J_{\theta'}*u$ is locally
+	$p$--Lipschitz.
+	Consider $\mathcal F_\theta$ of the following two forms:
 
-Known dynamics in this work can be written using \eqref{eq:state_dep_op} as follows.
+	\smallskip
+	\noindent
+	\textbf{(P1) Strong prior.}
+	\[
+		\mathcal F_\theta(m)
+		= -A m + B \tanh\!\bigl(C (J_{\theta'}*m)+D\bigr).
+	\]
+	If $A,B,C,D\in\mathbb R$ are fixed parameters, then the map
+	$F(I,m)=-Am+B\tanh(C I + D)$ is globally Lipschitz on
+	$\mathbb R\times\mathbb R$ because
+	\[
+		\bigl|\partial_I F\bigr| = |B C|\,\operatorname{sech}^2(C I + D)\le |B C|,
+		\qquad
+		\bigl|\partial_m F\bigr| = |A|.
+	\]
+	Hence the composite operator $m\mapsto\mathcal F_\theta(m)$ is locally
+	$p$--Lipschitz with constant
+	\[
+		L_{\!F}
+		\le |A| + |B C|\,\bigl(L_K\|m\|_{L^p}+C_K\bigr).
+	\]
 
-\paragraph{Physical analogue with state-dependent interactions.}
-Replacing the fixed Kac operator by \eqref{eq:state_dep_op} yields
-\begin{equation}
-	\partial_t m(t,x) \;=\; -\,m(t,x)\; +\; \tanh\!\Big( \beta\,\big( I_m[m](t,x) + h \big) \Big),
-	\qquad m(0,x)=m_0(x),
-	\label{eq:state_dep_physical}
-\end{equation}
-which reduces to \eqref{eq:hydro} when $K(x,y;\xi)$ does not depend on $\xi$ and $\int K\equiv1$ (e.g., $K(x,y;\xi)=J_\epsilon(x-y)$).
+	\smallskip
+	\noindent
+	\textbf{(P2) Weak prior.}
+	\[
+		\mathcal F_\theta(m)
+		= \mathrm{MLP}_\theta\!\bigl(I,m\bigr),
+		\qquad I=J_{\theta'}*m.
+	\]
+	Assume that the neural network $\mathrm{MLP}_\theta:\mathbb R^2\to\mathbb R$
+	satisfies \emph{both} of the following:
+	\begin{itemize}
+		\item[(a)] each activation function is globally Lipschitz
+		      (e.g.\ ReLU, $\tanh$, GELU);
+		\item[(b)] every weight matrix $W_\ell$ has a finite operator norm
+		      $\|W_\ell\|_{\mathrm{op}}\le M_\ell$.
+	\end{itemize}
+	Under (a)–(b) the network is globally Lipschitz:
+	there exists $L_{\mathrm{MLP}}(\theta)>0$ such that
+	\[
+		\bigl|\mathrm{MLP}_\theta(I_1,m_1)
+		-\mathrm{MLP}_\theta(I_2,m_2)\bigr|
+		\le L_{\mathrm{MLP}}(\theta)\bigl(|I_1-I_2|+|m_1-m_2|\bigr).
+	\]
+	Consequently $m\mapsto \mathcal F_\theta(m)$ is locally
+	$p$--Lipschitz with constant
+	\[
+		L_{\!F}
+		\le L_{\mathrm{MLP}}(\theta)\,
+		\Bigl[1 + L_K\|m\|_{L^p} + C_K\Bigr].
+	\]
 
-\paragraph{Learned generator forms with state-dependent interactions.}
-- Design A: \; $\displaystyle \partial_t m \;=\; -A\,m + G_\theta\big( I_m[m],\, m,\, h \big)$.
+	Consequently $m\mapsto \mathcal F_\theta(m)$ is locally
+	$p$--Lipschitz with constant
+	\[
+		L_{\!F}
+		\le L_{\mathrm{MLP}}(\theta)\,
+		\Bigl[1 + L_K\|m\|_{L^p} + C_K\Bigr].
+	\]
 
-- Design B: \; $\displaystyle \partial_t m \;=\; -A\,m + \tanh\!\big( B\,I_m[m] + C\,m + D\,h \big)$.
+	\smallskip
+	In both cases the composite map $m\mapsto\mathcal F_\theta(m)$ satisfies
+	the hypotheses of Proposition~\ref{prop:Lip-FJ}, hence
+	$\mathcal F_\theta:L^p(\Omega)\to L^\infty(\Omega)$
+	is locally $p$--Lipschitz.
 
-These coincide with the forms in \S\ref{subsec:designs_lipschitz} upon taking $I_m[m]=J_\theta*m$ for fixed $J_\theta$. The analysis in \S\ref{subsec:physical_wellposed} applies verbatim when $K$ is bounded, nonnegative, and $Z_u(x)$ is uniformly bounded away from zero, ensuring $I_u[\cdot]$ remains a bounded Lipschitz operator on $\{\|u\|_{L^\infty}\le 1\}$.
+	\medskip\noindent
+	\textbf{Implementation:} (a) is easy, we need to ensure (b), control $\|W_\ell\|_{\mathrm{op}}$ during training:
+	\begin{itemize}
+		\item[(i)] by spectral normalization, $
+			      W_\ell \;\leftarrow\;
+			      \frac{W_\ell}{\sigma_{\max}(W_\ell)}$.
+		\item[(ii)] by weight clipping, $W_\ell \;\leftarrow\;
+			      \mathrm{clip}\bigl(W_\ell,\,-c,\,c\bigr)$.
+	\end{itemize}
+	by spectral normalization or by projecting/ clipping weights
+	to a fixed spectral norm bound after each update.
+
+\end{corollary}
 
 
-\subsection{Boundedness (invariant region) for $m$}
 
-Uniform boundedness (e.g., $m\in[-1,1]$) enables global continuation (prevents blow-up), keeps the right-hand side Lipschitz on a bounded set (for stability/Gronwall), preserves physical constraints and numerical robustness, and often aligns with energy dissipation structures.
+\subsection{Local well-posedness}
 
-\paragraph{Baseline analytic model.} For
-\[
-	\partial_t m = -\,m + \tanh\!\big( \beta\,(J* m + h) \big),
-\]
-if $J\ge 0$ and $\int J = 1$ (discrete: unit-sum), then $I:=J*m\in[-1,1]$ whenever $m\in[-1,1]$. Since $\tanh\in(-1,1)$, at $m=1$ one has $\partial_t m\le -1+1=0$ and at $m=-1$ one has $\partial_t m\ge 1-1=0$. Hence $[-1,1]$ is a positively invariant interval (maximum/comparison principle).
+\begin{theorem}[Picard–Lindelöf in a Banach space; see \cite{pazy2012semigroups}]\label{thm:picard}
+	Let $(\mathcal Y,\|\cdot\|_{\mathcal Y})$ be a Banach space and
+	$\mathcal X_\delta := C([0,\delta],\mathcal Y)$ with
+	$\|u\|_{\mathcal X_\delta} := \sup_{0\le t\le \delta}\|u(t)\|_{\mathcal Y}$.
+	Assume $\mathcal L:\mathcal X_\delta\to\mathcal X_\delta$ satisfies
 
-\paragraph{Design A: general $F(I,m)$.} Sufficient conditions:
+	(Locally Lipschitz:)
+	For every $R>0$ there exists $C_R>0$ such that
+	\[
+		\|\mathcal L[u](\cdot,s)-\mathcal L[v](\cdot,s)\|_{\mathcal Y}
+		\le C_R\|u(\cdot,s)-v(\cdot,s)\|_{\mathcal Y},
+		\qquad
+		\forall u,v\in\mathcal X_\delta
+		\text{ with }\|u\|,\|v\|\le R,
+	\]
+	uniformly for $s\in[0,\delta]$.
+
+	Then for every $u_0\in\mathcal Y$ there exists $\delta_0>0$ such that the Cauchy
+	problem
+	\[
+		\partial_t u = \mathcal L[u], \qquad u(0)=u_0
+	\]
+	admits a unique solution $u\in \mathcal X_{\delta_0}$.
+	Moreover, if $v$ solves the same equation with initial datum $v_0$, then
+	\[
+		\|u-v\|_{\mathcal X_{\delta_0}}
+		\le e^{C_R\delta_0}\|u_0-v_0\|_{\mathcal Y}.
+	\]
+\end{theorem}
+
+\begin{corollary}[Local well-posedness of the mesoscopic PDE]\label{thm:wellposed}
+	Assume the operator $\mathcal L$ in
+	\[
+		\partial_t m = \mathcal L[m],\qquad m(0)=m_0
+	\]
+	satisfies the hypotheses of Theorem~\ref{thm:picard}
+	(\emph{i.e.}, $\mathcal L$ is continuous and locally Lipschitz
+	on bounded subsets of $\mathcal X_\delta$ by Proposition~\ref{prop:Lip-simple}).
+	Then for every $m_0\in \mathcal Y$ there exists $\delta_0>0$
+	such that this Cauchy problem admits a unique solution
+	\[
+		m \in C([0,\delta_0],\mathcal Y),
+	\]
+	and the solution depends Lipschitz–continuously on the initial datum:
+	\[
+		\|m_1 - m_2\|_{\mathcal X_{\delta_0}}
+		\le e^{C_R\delta_0}\,\|m_{1,0} - m_{2,0}\|_{\mathcal Y}.
+	\]
+\end{corollary}
+
+
+\subsection{Error and stability}
+\begin{theorem}[Error propagation for two vector fields]\label{thm:err}
+	Let $(\mathcal Y,\|\cdot\|_{\mathcal Y})$ and $\mathcal X_\delta$
+	be as in Theorem~\ref{thm:picard}, and let $B\subset\mathcal Y$
+	be a closed forward–invariant set.
+	Suppose two operators
+	\(\mathcal L_\theta,\mathcal L_*:B\to\mathcal Y\) satisfy
+	the same hypotheses of Corollary~\ref{thm:wellposed}
+	with a common Lipschitz constant $L\ge 0$.
+	Assume further that their pointwise discrepancy is finite:
+	\[
+		\varepsilon_*:=\sup_{m\in B}
+		\|\mathcal L_\theta[m]-\mathcal L_*[m]\|_{\mathcal Y}<\infty.
+	\]
+	Let $m_\theta,m_*:[0,T]\to B$ be the (unique) solutions of
+	\[
+		\partial_t m_\theta=\mathcal L_\theta[m_\theta],\qquad
+		\partial_t m_*=\mathcal L_*[m_*],
+	\]
+	with the same initial condition $m_\theta(0)=m_*(0)=m_0\in B$.
+	Then for all $t\in[0,T]$,
+	\begin{equation}\label{eq:err-prop}
+		\|m_\theta(t)-m_*(t)\|_{\mathcal Y}
+		\le
+		\begin{cases}
+			\displaystyle \dfrac{\varepsilon_*}{L}\bigl(e^{Lt}-1\bigr), & L>0, \\[1ex]
+			\displaystyle \varepsilon_*\, t,                            & L=0.
+		\end{cases}
+	\end{equation}
+\end{theorem}
+
+\begin{proof}
+	Let $e(t):=m_\theta(t)-m_*(t)$ denote the difference of the two trajectories.
+	Both $m_\theta$ and $m_*$ solve their respective evolution equations,
+	\[
+		\partial_t m_\theta = \mathcal L_\theta[m_\theta],
+		\qquad
+		\partial_t m_*      = \mathcal L_*[m_*].
+	\]
+	Subtracting these two equations gives
+	\[
+		\dot e(t)
+		= \mathcal L_\theta[m_\theta(t)]-\mathcal L_*[m_*(t)] .
+	\]
+
+	\medskip\noindent
+	To estimate this, add and subtract the intermediate term
+	$\mathcal L_\theta[m_*(t)]$:
+	\[
+		\dot e(t)
+		= \bigl(\mathcal L_\theta[m_\theta(t)]
+		-\mathcal L_\theta[m_*(t)]\bigr)
+		+\bigl(\mathcal L_\theta[m_*(t)]
+		-\mathcal L_*[m_*(t)]\bigr).
+	\]
+	The first bracket measures the sensitivity of $\mathcal L_\theta$
+	to its argument, while the second measures the discrepancy
+	between the two vector fields at the same point.
+
+	\medskip\noindent
+	By assumption \textnormal{(A3: Lipschitz)},
+	\[
+		\bigl\|\mathcal L_\theta[m_\theta(t)]
+		-\mathcal L_\theta[m_*(t)]\bigr\|_{\mathcal Y}
+		\le L\,\|m_\theta(t)-m_*(t)\|_{\mathcal Y}
+		= L\,\|e(t)\|_{\mathcal Y}.
+	\]
+	By the definition of the generator discrepancy
+	\(
+	\varepsilon_*:=\sup_{m\in B}
+	\|\mathcal L_\theta[m]-\mathcal L_*[m]\|_{\mathcal Y},
+	\)
+	\[
+		\bigl\|\mathcal L_\theta[m_*(t)]
+		-\mathcal L_*[m_*(t)]\bigr\|_{\mathcal Y}
+		\le \varepsilon_*.
+	\]
+	Combining these two estimates yields the differential inequality
+	\[
+		\|e'(t)\|_{\mathcal Y}
+		\le L\,\|e(t)\|_{\mathcal Y}+\varepsilon_*.
+	\]
+
+	\medskip\noindent
+	Set $g(t):=\|e(t)\|_{\mathcal Y}$.  Since $g$ is absolutely continuous,
+	$g'(t)\le \|e'(t)\|_{\mathcal Y}$ for almost every $t$, so
+	\[
+		g'(t) \le L\,g(t) + \varepsilon_*,
+		\qquad g(0)=0.
+	\]
+	An application of Grönwall’s inequality gives
+	\[
+		g(t)\le
+		\begin{cases}
+			\dfrac{\varepsilon_*}{L}\bigl(e^{L t}-1\bigr), & L>0, \\[1ex]
+			\varepsilon_* t,                               & L=0.
+		\end{cases}
+	\]
+	This is exactly the bound \eqref{eq:err-prop}.
+
+	\medskip\noindent
+	Finally, because $B$ is assumed forward–invariant,
+	both trajectories $m_\theta(t)$ and $m_*(t)$ remain in $B$
+	for all $t\in[0,T]$, ensuring that the Lipschitz and local boundedness
+	assumptions used above remain valid throughout the time interval.
+\end{proof}
+
+
+\subsection{Summary of Assumptions and Priors}
+\label{subsec:summary_assumptions_priors}
+
 \begin{itemize}
-	\item Kernel constraints: $J\ge0$ and $\int J=1$ so that $I\in[-1,1]$ when $m\in[-1,1]$;
-	\item Inward-pointing (Nagumo) at the boundary: for all $I\in[-1,1]$, $F(I,1)\le0$ and $F(I,-1)\ge0$;
-	\item Structural realizations:
+	\item \textbf{Assumptions:}
 	      \begin{itemize}
-		      \item Decompose $F(I,m)= -A m + G(I,m)$ with $A> \sup_{I,m\in[-1,1]} |G(I,m)|$;
-		      \item (We may try this) $F(I,m)= -A m + (1-m^2)\,H(I,m)$ with $A>0$ so the nonlinear part vanishes at the boundary;
-		      \item Implement $G,H$ by bounded-activation networks (e.g., $\tanh$). Optionally add a boundary penalty $\mathcal{L}_{\mathrm{bc}}=\mathbb{E}_I[\max\{0,F(I,1)\}+\max\{0,-F(I,-1)\}]$.
+		      \item (A0: Identifiability): Normalized Kernel: $\|J_{\theta'}(x,\cdot)\|_{L^{p}(\Omega)}=1$. \textbf{Global sign: ?}
+		      \item (A1: Boundedness of $J_{\theta'}$ in $L_q$): $\sup_{x\in\Omega}\|J_{\theta'}(x,\cdot)\|_{L^{q}(\Omega)}\le C_J$
+		      \item (A2: Lipschitz of $J_{\theta'}$ in $L_q'$): $\sup_{x\in\Omega}\|J_{\theta'}(x,\cdot;u)-J_{\theta'}(x,\cdot;v)\|_{L^{q'}(\Omega)}\le C_J\|u-v\|_{L^{q'}(\Omega)}$.
+		      \item (A3: Lipschitz of $\mathcal{F}_\theta$ in $L^p$): $\sup_{x\in\Omega}\|\mathcal{F}_\theta(x,u)-F_\theta(x,v)\|_{L^{p}(\Omega)}\le C_F\|u-v\|_{L^{p}(\Omega)}$.
+		            %   \item (A3: Lipschitz of $\mathcal L_\theta$ and $\mathcal L_*$): there exists $L>0$ such that for all $m\in B$,
+		            %         \[
+		            %             \|\mathcal L_\theta[m]-\mathcal L_*[m]\|_{\mathcal Y}\le L\|m-m\|_{\mathcal Y}.
+		            %         \]
+		            %   \item (A4: Locally bounded): for every $R>0$ there exists $M_R>0$ such that
+		            %         \[\sup_{m\in B}\|\mathcal L_\theta[m]-\mathcal L_*[m]\|_{\mathcal Y}\le M_R.\]
+	      \end{itemize}
+	\item \textbf{Priors on $\mathcal{F}_\theta$:}
+	      \begin{itemize}
+		      \item (PF1: Strong prior): $\mathcal{F}_\theta = -A m + B \tanh(C \mathcal{I}_{\theta\prime}[m] + D)$, where $\mathcal{I}_{\theta\prime}[m]=J_{\theta\prime}*m$.
+
+		            Here, we should have $A>B>0$ and $C>0$.
+		      \item (PF2: Weak prior): $\mathcal{F}_\theta$ is a neural network $\mathrm{MLP}_\theta(I,m)$ (we discuss some specific structures in the following).
+	      \end{itemize}
+
+	\item \textbf{Priors on $J_{\theta\prime}$:}
+	      \begin{itemize}
+		      \item (PJ1: Local kernel): $J_{\theta\prime}$ is a local convolution kernel $J_{\theta\prime}(x-y)$.
+		      \item (PJ2: Non-local kernel): $J_{\theta\prime}$ is a non-local convolution kernel $J_{\theta\prime}(x,y)$.
+		      \item (PJ3: State-dependent kernel, nonlinear operator): $J_{\theta\prime}$ is a state-dependent operator $J_{\theta\prime}(x,y; m)$.
 	      \end{itemize}
 \end{itemize}
 
 
-**\paragraph{Design B: affine + tanh $F(I,m)= -A m + B\tanh(C I + D)$.}
-A sufficient condition is $A > |B|$.
-For implementation, we use differentiable reparameterization:
-$$
-	A=\mathrm{softplus}(a)+\varepsilon_A,\qquad
-	B=(A-\varepsilon_A)\,\sigma(b),\quad \varepsilon_A>0,
-$$
-which ensures $0\le |B|<A-\varepsilon_A<A$.
 
-Consequently,
-$F(I,1)\le -\varepsilon_A<0$ and $F(I,-1)\ge \varepsilon_A>0$, independent of $C$ and $D$.
-Together with $J\ge 0,\int J=1$, this guarantees $I\in[-1,1]$.
 
-\subsection{Invariant bounds and global well-posedness in $L^\infty$}
-\label{subsec:inv_wellposed}
 
-\begin{theorem}[Invariant interval and global well-posedness in $L^\infty$]
-	\label{thm:linfty_wellposed}
-	Let $J_\theta$ satisfy the kernel assumptions above and let $F_\theta$ be globally Lipschitz in $(I,m)$. Then, for any $m_0\in L^\infty(\Omega)$ with $\|m_0\|_{L^\infty}\le 1$, the IVP
-	\[
-		\partial_t m = F_\theta(J_\theta*m, m, h)
-	\]
-	has a unique global mild solution $m\in C([0,\infty);L^\infty(\Omega))$. Moreover, the interval $(-1,1)$ is invariant: if $\|m_0\|_{L^\infty}\le 1$, then $\|m(t)\|_{L^\infty}<1$ for all $t>0$.
-\end{theorem}
+% \subsection{State-dependent nonlocal operator and dynamics}
+% \label{subsec:state_dependent_J}
 
-\begin{proof}[Proof (sketch)]
-	Boundedness of convolution on $L^\infty$ implies
-	\(
-	\| (J_\theta*m_1) - (J_\theta*m_2) \|_{L^\infty} \le \|J_\theta\|_{L^1}\, \|m_1-m_2\|_{L^\infty} = \|m_1-m_2\|_{L^\infty}.
-	\)
-	If $F_\theta$ is $L_F$-Lipschitz in $(I,m)$, then the map $m\mapsto F_\theta(J_\theta*m,m,h)$ is $L$-Lipschitz on $L^\infty$ with $L\le 2L_F$. Picard--Lindel\"of in the Banach space $L^\infty$ yields local existence/uniqueness, and linear growth of $F_\theta$ on the invariant cube $[-1,1]$ implies global existence. Invariance of $(-1,1)$ follows because the vector field at $m=\pm 1$ points inward: for the strong prior, $-A\,\mathrm{sign}(m)+\tanh(\cdot)$ has opposite sign at $\pm1$ and $|\tanh|<1$.
-\end{proof}
-
-\paragraph{Explicit Lipschitz constants for the strong prior.}
-For $F_\theta(I,m,h)=-A m + \tanh(B I + C m + D h)$ and $\|J_\theta\|_{L^1}=1$,
-\[
-	\| L_\theta[m_1]-L_\theta[m_2] \|_{L^\infty}
-	\;\le\; \Big(|A|+|C| + |B|\Big)\,\|m_1-m_2\|_{L^\infty},
-\]
-since $\tanh'$ is bounded by 1 and convolution is an $L^\infty$-contraction.
-
-\subsection{Stability and error-to-solution bounds}
-\label{subsec:stability_error}
-
-We compare trajectories generated by the learned $L_\theta$ and by the physical $L_\ast$ (nonlocal Glauber--Kac \eqref{eq:hydro}). Define the \emph{generator discrepancy}
-\[
-	\varepsilon_* \;=\; \sup_{\|m\|_{L^\infty}\le 1}\, \big\| L_\theta[m] - L_\ast[m] \big\|_{L^\infty}.
-\]
-
-% \begin{proposition}[Gronwall-type trajectory stability]
-% \label{prop:gronwall}
-% Let $m_\theta$ and $m_\ast$ solve $\partial_t m=L_\theta[m]$ and $\partial_t m=L_\ast[m]$ with the same $m_0\in L^\infty$, and assume both vector fields are $L$-Lipschitz on $\{\|m\|_{L^\infty}\le 1\}$. Then for all $t\ge 0$,
+% We allow the interaction kernel to depend on the evolving field. Let $\Omega=\mathbb{T}^d$ and $u:\Omega\to\mathbb{R}$. Consider a measurable, nonnegative kernel
 % \[
-%   \| m_\theta(t)-m_\ast(t) \|_{L^\infty}
-%   \;\le\; \frac{\varepsilon_*}{L}\,\big(e^{Lt}-1\big).
+% 	K: \Omega\times\Omega\times\mathbb{R} \to [0,\infty),\qquad (x,y,\xi)\mapsto K(x,y;\xi),
 % \]
-% Consequently, small uniform generator error implies uniformly small trajectory error on finite horizons.
-% \end{proposition}
+% and define, for a given state $u$, the (pointwise) normalizer and the normalized, state-dependent nonlocal operator
+% \begin{equation}
+% 	Z_u(x) \;:=\; \int_{\Omega} K\big(x,y; u\big)\,dy\;>\;0,\qquad
+% 	I_u[u](x) \;:=\; \frac{\displaystyle \int_{\Omega} K\big(x,y; u\big)\,u(y)\,dy}{\displaystyle Z_u(x)}.
+% 	\label{eq:state_dep_op}
+% \end{equation}
+% If $K$ is already normalized in $y$ for each $(x,\xi)$, i.e., $\int_{\Omega}K(x,y;\xi)\,dy\equiv1$, then $I_u[u](x)=\int_{\Omega}K(x,y;u)\,u(y)\,dy$.
 
-\begin{proof}
-	Subtract the two ODEs in $L^\infty$ and apply standard Gronwall inequality using Lipschitz continuity of $L_\theta$ and $L_\ast$ together with the uniform discrepancy bound $\varepsilon_*$.\qedhere
-\end{proof}
+% Known dynamics in this work can be written using \eqref{eq:state_dep_op} as follows.
 
-\paragraph{Energy dissipation and learned kernels.}
-For the \emph{physical} nonlocal flow (\eqref{eq:nonlocal}) one has the Lyapunov functional
-\[
-	\mathcal{F}[m] \;=\; \int_\Omega \Big( \Phi(m) - \tfrac{\beta}{2}\,m\, (J_\epsilon*m) - \beta h m \Big)\,dx,
-\]
-with $\Phi'(m)=\operatorname{artanh}(m)$, for which $\tfrac{d}{dt}\,\mathcal{F}[m(t)]\le 0$ along solutions (see comments after \eqref{eq:free_energy}). The \emph{learned} generator with strong-prior parameters $(A,B,C,D)=(1,\beta,0,\beta)$ and any even, nonnegative, normalized kernel $J_\theta$ admits the analogous functional with $J_\epsilon$ replaced by $J_\theta$. If $(A,B,C,D)$ deviate from the physical values, one obtains an \emph{approximate} dissipation inequality with a defect term proportional to the parameter error and the generator discrepancy; in particular, $\big|\tfrac{d}{dt}\,\mathcal{F}_\theta[m(t)]\big| \le C\,\varepsilon_*\,(1+\|m\|_{H^s})$ for bounded $H^s$ solutions.
+\subsection{Experimental Settings}
 
-\subsection{Discrete setting (training-time operator) and space-regularity preservation}
-\label{subsec:discrete}
+All kernels are normalized in $y$ for each $(x,\xi)$, i.e., $\int_{\Omega}K(x,y;\xi)\,dy\equiv1$.
 
-In the training code (\S\ref{sec:network}), the learned operator acts on discrete fields $m\in\mathbb{R}^{M\times M}$ with periodic padding. The softmax kernel $K\in\mathbb{R}^{K\times K}$ is nonnegative and $\sum K=1$, so $m\mapsto K\ast m$ is a contraction on $\ell^p$ for all $p\in[1,\infty]$;
-composing with $\tanh$ or a bounded-derivative MLP yields a globally Lipschitz right-hand side, hence global well-posedness in $\ell^\infty$ and preservation of the discrete range $(-1,1)$. Moreover, if one measures discrete Sobolev regularity via Fourier multipliers on the periodic grid, convolution with a smooth, compactly supported kernel preserves (and may increase) discrete $H^s$ regularity, and composition with $\tanh$ preserves it on the invariant range. These facts justify using high-order discrete norms and smoothness priors during training without risking ill-posedness.
 
-\subsection{Implications for model design and validation}
+\noindent
+Strong prior w/ or w/o $A>B>0$ and $C>0$.
 
-- \textbf{Kernel constraints are essential}: nonnegativity and unit-sum ensure boundedness and stability, and allow a free-energy functional matching the post-processed energy used in \S\ref{sec:error_and_stats}.
-- \textbf{Strong-prior parameters}: taking $(A,B,C,D)=(1,\beta,0,\beta)$ recovers the physical generator and exact dissipation; learning small deviations maintains stability and approximate dissipation.
-- \textbf{Regularity-aware training}: since $L_\theta$ preserves $H^s$ (and gains regularity through convolutional smoothing), one may penalize roughness of $L_\theta[m]$ or of trajectories to improve generalization while respecting the hydrodynamic structure.
-- \textbf{Quantitative validation}: Proposition~\ref{prop:gronwall} links generator error to trajectory error; evaluating $\varepsilon_*$ on a validation set provides a principled, physics-informed generalization metric.
+\noindent
+Weak prior w/ or w/o spectral normalization or weight clipping.
+
+\begin{itemize}
+	\item (PF1, PJ1): Strong prior, local kernel.
+	\item (PF1, PJ2): Strong prior, non-local kernel.
+	\item (PF1, PJ3): Strong prior, state-dependent kernel.
+\end{itemize}
+
+\begin{itemize}
+	\item (PF2, PJ1): Weak prior, local kernel.
+	\item (PF2, PJ2): Weak prior, non-local kernel.
+	\item (PF2, PJ3): Weak prior, state-dependent kernel.
+\end{itemize}
+
+
+Our evaluation may be related to both the error in gradient flow and the error in trajectory.
 
 % \section{Theoretical analysis of the nonlocal Glauber-Kac PDE (GPT-generated, to be checked)} 
 % \label{sec:nonlocal_theory}
@@ -1376,7 +1781,6 @@ composing with $\tanh$ or a bounded-derivative MLP yields a globally Lipschitz r
 
 % \subsection{Qualitative implications}
 % Because $\widehat{J_\epsilon}(k)$ is maximal at $k=0$, the first instability is spatially uniform. Thus, beyond the mean-field threshold (e.g., $\beta>1$ at $h\approx0$), dynamics tends to select homogeneous magnetized states $\pm m^*$ rather than finite-wavenumber patterns; interfaces connecting phases may form, with their width and motion modulated by the nonlocal interaction range.
-
 
 
 \nocite{*}
