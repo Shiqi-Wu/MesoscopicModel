@@ -1664,6 +1664,100 @@ Then $\mathcal{F}(I, 1) = -A < 0$ and $\mathcal{F}(I, -1) = A > 0$, which means 
 	      \end{itemize}
 \end{itemize}
 
+\subsection{Discussion on Nemytskii operators}
+
+\paragraph{Classical Nemytskii operator.}
+Let $\Omega\subset\mathbb R^d$ be measurable and $1\le p<\infty$.
+Given a Carathéodory function $f:\Omega\times\mathbb R\to\mathbb R$
+(measurable in $x$, continuous in $z$), the \emph{Nemytskii operator}
+$N_f:L^p(\Omega)\to L^p(\Omega)$ is defined by
+\[
+	(N_f u)(x) := f\bigl(x,u(x)\bigr).
+\]
+A standard result (see e.g.\ \cite[Thm.~1.2.5]{amann1995linear},
+\cite[Thm.~2.3.5]{pazy2012semigroups}) (TODO: check the thm) states that if
+\[
+	|f(x,z_1)-f(x,z_2)| \le L |z_1-z_2|
+	\quad\text{for a.e. }x\in\Omega\text{ and all }z_1,z_2\in\mathbb R,
+\]
+and $f(\cdot,0)\in L^p(\Omega)$, then $N_f$ is globally Lipschitz on
+$L^p(\Omega)$ with the same constant $L$.
+
+\paragraph{Our composite operator.}
+In our model the nonlinearity depends not only on $m(x)$
+but also on the nonlocal interaction
+\[
+	I(x) := (J[m])(x) := \int_\Omega J(x,y)m(y)\,dy,
+\]
+and we consider
+\[
+	\mathcal F[m](x) := F\bigl(I(x),\,m(x)\bigr).
+\]
+Here $J:L^p(\Omega)\to L^\infty(\Omega)$ is an integral operator,
+assumed to satisfy the finite–energy bound
+\[
+	\sup_{x\in\Omega}\int_\Omega |J(x,y)|\,dy < \infty,
+\]
+and to be locally $p$–Lipschitz as in \eqref{eq:bounds}–\eqref{eq:LipK}.
+
+\begin{theorem}[Local $p$–Lipschitz continuity of $\mathcal F$]
+	Let $1\le p\le\infty$ and let $J$ satisfy
+	\eqref{eq:bounds}–\eqref{eq:LipK}.
+	Assume that $F:\mathbb R\times\mathbb R\to\mathbb R$ is
+	Carathéodory and locally Lipschitz in both variables:
+	for every $R>0$ there exist $L_I(R),L_m(R)$ such that
+	\[
+		|F(I_1,m_1)-F(I_2,m_2)|
+		\le L_I(R)|I_1-I_2| + L_m(R)|m_1-m_2|
+	\]
+	whenever $|I_i|,|m_i|\le R$.
+	Then for every bounded subset $B\subset L^p(\Omega)$
+	the map $m\mapsto \mathcal F[m]$ is locally $p$–Lipschitz on $B$:
+	for some $C_B>0$,
+	\[
+		\|\mathcal F[u]-\mathcal F[v]\|_{L^p}
+		\le C_B\,\|u-v\|_{L^p},
+		\qquad u,v\in B.
+	\]
+\end{theorem}
+
+\begin{proof}
+	Let $u,v\in B$.  Write
+	\[
+		\mathcal F[u]-\mathcal F[v]
+		= F(J[u],u)-F(J[v],v).
+	\]
+	By the Lipschitz property of $F$ on a range containing
+	$\{(J[w](x),w(x)):w\in B\}$ we have
+	\[
+		|F(J[u],u)-F(J[v],v)|
+		\le L_I |J[u]-J[v]| + L_m |u-v|.
+	\]
+	Taking $L^p$ norms and using the triangle inequality,
+	\[
+		\|\mathcal F[u]-\mathcal F[v]\|_{L^p}
+		\le L_I \|J[u]-J[v]\|_{L^p} + L_m \|u-v\|_{L^p}.
+	\]
+	Since $J:L^p\to L^\infty$ is locally $p$–Lipschitz by
+	\eqref{eq:bounds}–\eqref{eq:LipK}, it is also locally
+	$L^p\to L^p$ Lipschitz.  Hence
+	\[
+		\|J[u]-J[v]\|_{L^p} \le L_J \|u-v\|_{L^p}.
+	\]
+	Combining these estimates gives
+	\[
+		\|\mathcal F[u]-\mathcal F[v]\|_{L^p}
+		\le \bigl(L_I L_J + L_m\bigr) \|u-v\|_{L^p},
+	\]
+	which proves the claim.
+\end{proof}
+
+We note that
+\text{(Nemytskii conditions on $F$ and $J$) } $\Rightarrow$
+\text{(Locally Lipschitz condition on $\mathcal L$, A3: \eqref{eq:F-Lip})},
+\text{but not conversely.}
+
+
 
 
 
